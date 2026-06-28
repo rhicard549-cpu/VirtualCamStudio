@@ -31,6 +31,7 @@ namespace VirtualCamStudio
         private readonly CameraProfileService _profileService = new();
         private readonly OutputManager _outputManager = new();
         private readonly VirtualCameraService _virtualCamera = new();
+        private readonly Services.OBS.OBSClient _obsClient = new();
 
         // Mouse drag state
         private bool _isDragging = false;
@@ -753,6 +754,56 @@ namespace VirtualCamStudio
                 {
                     StatusText.Text = $"Export failed: {ex.Message}";
                 }
+            }
+        }
+
+        // ============================================
+        // OBS Connection (Temporary Test)
+        // ============================================
+
+        /// <summary>
+        /// Handles the Connect OBS button click (temporary test).
+        /// Attempts to connect to OBS WebSocket and displays the result.
+        /// </summary>
+        private async void ConnectOBSButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                // Disable button during connection attempt
+                ConnectOBSButton.IsEnabled = false;
+                ConnectOBSButton.Content = "Connecting...";
+                StatusText.Text = "Connecting to OBS...";
+
+                // Attempt to connect
+                bool connected = await _obsClient.ConnectAsync();
+
+                if (connected)
+                {
+                    ConnectOBSButton.Content = "Connected ✓";
+                    ConnectOBSButton.Background = System.Windows.Media.Brushes.Green;
+                    StatusText.Text = "Connected to OBS";
+                    MessageBox.Show("Connected to OBS", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    ConnectOBSButton.Content = "Connect OBS";
+                    ConnectOBSButton.IsEnabled = true;
+                    StatusText.Text = "Failed to connect to OBS";
+                    MessageBox.Show("Failed to connect to OBS.\n\nMake sure OBS Studio is running and WebSocket server is enabled.", 
+                                    "Connection Failed", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConnectOBSButton.Content = "Connect OBS";
+                ConnectOBSButton.IsEnabled = true;
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error connecting to OBS: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
             }
         }
 
