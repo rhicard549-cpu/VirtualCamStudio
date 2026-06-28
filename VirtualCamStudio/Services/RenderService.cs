@@ -12,6 +12,7 @@ namespace VirtualCamStudio.Services
     /// 2. Own the framing settings (zoom, pan, rotation)
     /// 3. Accumulate viewport state as sliders are moved
     /// 4. Pass the original image + framing settings to RenderEngine for each frame
+    /// 5. Use the active camera profile's display dimensions for canvas size
     /// 
     /// Key Principle: The original image is loaded once and cached. Only the framing
     /// settings change as the user interacts with sliders. This eliminates redundant
@@ -21,9 +22,6 @@ namespace VirtualCamStudio.Services
     {
         private readonly ImageProcessor _imageProcessor = new();
         private readonly RenderEngine _renderEngine = new();
-
-        private readonly CanvasSettings _canvas =
-            CanvasSettings.Portrait1080;
 
         /// <summary>
         /// Framing settings owned by RenderService.
@@ -73,17 +71,28 @@ namespace VirtualCamStudio.Services
         /// Render the current image with accumulated framing settings.
         /// 
         /// The original cached image is passed to RenderEngine along with
-        /// the current framing settings. No image reloading occurs; only
-        /// the viewport state has changed since the last render call.
+        /// the current framing settings and canvas dimensions from the active profile.
+        /// No image reloading occurs; only the viewport state has changed since the last render call.
         /// </summary>
-        public Mat Render()
+        /// <param name="profile">The active camera profile (provides display dimensions)</param>
+        public Mat Render(CameraProfile? profile)
         {
             if (!HasImage)
                 return new Mat();
 
+            // Use profile dimensions if available, otherwise fall back to defaults
+            int canvasWidth = profile?.DisplayWidth ?? 1080;
+            int canvasHeight = profile?.DisplayHeight ?? 1920;
+
+            var canvas = new CanvasSettings
+            {
+                Width = canvasWidth,
+                Height = canvasHeight
+            };
+
             return _renderEngine.Render(
                 _currentImage!,
-                _canvas,
+                canvas,
                 FitMode.Fill,
                 _framing);
         }

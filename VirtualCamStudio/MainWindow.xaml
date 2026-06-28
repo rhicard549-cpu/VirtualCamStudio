@@ -7,11 +7,13 @@
         Background="#202020"
         AllowDrop="True"
         DragOver="Window_DragOver"
-        Drop="Window_Drop">
+        Drop="Window_Drop"
+        Loaded="Window_Loaded">
 
     <Grid>
 
         <Grid.RowDefinitions>
+            <RowDefinition Height="40"/>
             <RowDefinition Height="*" />
             <RowDefinition Height="35"/>
         </Grid.RowDefinitions>
@@ -21,9 +23,40 @@
             <ColumnDefinition Width="220"/>
         </Grid.ColumnDefinitions>
 
+        <!-- ToolBar -->
+        <Border Grid.Row="0"
+                Grid.ColumnSpan="2"
+                Background="#1a1a1a"
+                BorderBrush="#444"
+                BorderThickness="0,0,0,1"
+                Padding="10,0,10,0"
+                VerticalAlignment="Stretch">
+
+            <StackPanel Orientation="Horizontal"
+                        VerticalAlignment="Center">
+
+                <TextBlock Text="Camera Profile:"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Margin="0,0,10,0"/>
+
+                <ComboBox x:Name="CameraProfileComboBox"
+                          Width="200"
+                          Height="28"
+                          VerticalAlignment="Center"
+                          SelectionChanged="CameraProfileComboBox_SelectionChanged">
+
+                </ComboBox>
+
+            </StackPanel>
+
+        </Border>
+
         <!-- Preview -->
 
-        <Border Grid.Column="0"
+        <Border Grid.Row="1"
+                Grid.Column="0"
                 Margin="15"
                 CornerRadius="8"
                 BorderBrush="#555"
@@ -54,7 +87,8 @@
 
         <!-- Right Panel -->
 
-        <Border Grid.Column="1"
+        <Border Grid.Row="1"
+                Grid.Column="1"
                 Margin="10,15,15,15"
                 Background="#2A2A2A"
                 CornerRadius="8"
@@ -63,23 +97,6 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto">
 
                 <StackPanel>
-
-                    <!-- Camera Profile Section -->
-
-                    <TextBlock Text="Camera Profile"
-                               Foreground="White"
-                               FontWeight="Bold"/>
-
-                    <ComboBox x:Name="CameraProfileComboBox"
-                              Margin="0,5,0,15">
-
-                        <ComboBoxItem IsSelected="True">Auto Detect</ComboBoxItem>
-                        <ComboBoxItem>MoreLogin Portrait</ComboBoxItem>
-                        <ComboBoxItem>Pixel 8</ComboBoxItem>
-                        <ComboBoxItem>Samsung S24</ComboBoxItem>
-                        <ComboBoxItem>Custom</ComboBoxItem>
-
-                    </ComboBox>
 
                     <TextBlock Text="Fit Mode"
                                Foreground="White"
@@ -186,7 +203,7 @@
 
         <!-- Status Bar -->
 
-        <StatusBar Grid.Row="1"
+        <StatusBar Grid.Row="2"
                    Grid.ColumnSpan="2">
 
             <StatusBarItem>

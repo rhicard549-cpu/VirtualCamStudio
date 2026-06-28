@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using VirtualCamStudio.Helpers;
+using VirtualCamStudio.Models;
 using VirtualCamStudio.Services;
 
 namespace VirtualCamStudio
@@ -11,14 +14,149 @@ namespace VirtualCamStudio
     public partial class MainWindow : Window
     {
         private readonly RenderService _renderService = new();
+        private readonly CameraProfileService _profileService = new();
 
         // Mouse drag state
         private bool _isDragging = false;
         private Point _lastMousePosition = new Point(0, 0);
 
+        /// <summary>
+        /// The currently selected camera profile
+        /// </summary>
+        public CameraProfile? ActiveProfile { get; set; }
+
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            LoadAndPopulateCameraProfiles();
+        }
+
+        /// <summary>
+        /// Loads all camera profiles and populates the ComboBox.
+        /// Creates a default profile if none exist.
+        /// Restores the last selected profile from application settings.
+        /// </summary>
+        private void LoadAndPopulateCameraProfiles()
+        {
+            // Load all profiles from disk
+            List<CameraProfile> profiles = _profileService.LoadProfiles();
+
+            // If no profiles exist, create a default one
+            if (profiles.Count == 0)
+            {
+                CreateDefaultProfile();
+                profiles = _profileService.LoadProfiles();
+            }
+
+            // Clear existing ComboBox items
+            CameraProfileComboBox.Items.Clear();
+
+            // Populate ComboBox with profile names
+            foreach (var profile in profiles)
+            {
+                CameraProfileComboBox.Items.Add(profile.Name);
+            }
+
+            // Restore last selected profile from settings file
+            string lastSelectedProfile = LoadLastSelectedProfile();
+
+            if (!string.IsNullOrEmpty(lastSelectedProfile))
+            {
+                int index = CameraProfileComboBox.Items.IndexOf(lastSelectedProfile);
+                if (index >= 0)
+                {
+                    CameraProfileComboBox.SelectedIndex = index;
+                }
+                else if (CameraProfileComboBox.Items.Count > 0)
+                {
+                    // Fall back to first profile if last selected doesn't exist
+                    CameraProfileComboBox.SelectedIndex = 0;
+                }
+            }
+            else if (CameraProfileComboBox.Items.Count > 0)
+            {
+                // Select first profile if no previous selection
+                CameraProfileComboBox.SelectedIndex = 0;
+            }
+        }
+
+        /// <summary>
+        /// Creates a default camera profile if none exist.
+        /// </summary>
+        private void CreateDefaultProfile()
+        {
+            var defaultProfile = new CameraProfile
+            {
+                Name = "Generic 1080x1920",
+                Manufacturer = "Generic",
+                Model = "Portrait 1080p",
+                SensorWidth = 6.4,
+                SensorHeight = 11.36,
+                DisplayWidth = 1080,
+                DisplayHeight = 1920,
+                Rotation = 0,
+                FPS = 30,
+                DefaultZoom = 1.0,
+                DefaultOffsetX = 0,
+                DefaultOffsetY = 0,
+                Notes = "Default profile for 1080x1920 portrait display"
+            };
+
+            _profileService.SaveProfile(defaultProfile);
+        }
+
+        /// <summary>
+        /// Loads the last selected profile name from user settings.
+        /// </summary>
+        private string LoadLastSelectedProfile()
+        {
+            try
+            {
+                string settingsPath = GetSettingsFilePath();
+                if (File.Exists(settingsPath))
+                {
+                    return File.ReadAllText(settingsPath).Trim();
+                }
+            }
+            catch
+            {
+                // Silently fail if we can't read settings
+            }
+            return string.Empty;
+        }
+
+        /// <summary>
+        /// Saves the last selected profile name to user settings.
+        /// </summary>
+        private void SaveLastSelectedProfile(string profileName)
+        {
+            try
+            {
+                string settingsPath = GetSettingsFilePath();
+                string directory = Path.GetDirectoryName(settingsPath);
+                if (!Directory.Exists(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+                File.WriteAllText(settingsPath, profileName);
+            }
+            catch
+            {
+                // Silently fail if we can't save settings
+            }
+        }
+
+        /// <summary>
+        /// Gets the path to the settings file in AppData.
+        /// </summary>
+        private string GetSettingsFilePath()
+        {
+            string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appDataPath, "VirtualCamStudio", "LastProfile.txt");
         }
 
         private void Window_DragOver(object sender, DragEventArgs e)
@@ -55,7 +193,7 @@ namespace VirtualCamStudio
             _renderService.LoadImage(path);
 
             PreviewImage.Source =
-                MatToBitmapSource.Convert(_renderService.Render());
+                MatToBitmapSource.Convert(_renderService.Render(ActiveProfile));
 
             DropText.Visibility = Visibility.Collapsed;
 
@@ -125,7 +263,7 @@ namespace VirtualCamStudio
                 return;
 
             PreviewImage.Source =
-                MatToBitmapSource.Convert(_renderService.Render());
+                MatToBitmapSource.Convert(_renderService.Render(ActiveProfile));
         }
 
         // ============================================
@@ -238,6 +376,26 @@ namespace VirtualCamStudio
             XSlider.Value = 0;
             YSlider.Value = 0;
 
+            RenderPreview();
+        }
+
+        /// <summary>
+        /// Handles camera profile selection.
+        /// Stores the selected profile and remembers it for next startup.
+        /// Immediately redraws the preview with the new profile's dimensions.
+        /// </summary>
+        private void CameraProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CameraProfileComboBox.SelectedItem is not string profileName)
+                return;
+
+            // Retrieve the selected profile
+            ActiveProfile = _profileService.GetProfile(profileName);
+
+            // Remember the selection
+            SaveLastSelectedProfile(profileName);
+
+            // Immediately redraw with the new profile's dimensions
             RenderPreview();
         }
 
