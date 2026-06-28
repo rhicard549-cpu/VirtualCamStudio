@@ -16,7 +16,15 @@
             <RowDefinition Height="35"/>
         </Grid.RowDefinitions>
 
-        <Border Margin="15"
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="220"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Preview -->
+
+        <Border Grid.Column="0"
+                Margin="15"
                 CornerRadius="8"
                 BorderBrush="#555"
                 BorderThickness="2"
@@ -39,16 +47,155 @@
 
         </Border>
 
-        <StatusBar Grid.Row="1">
+        <!-- Right Panel -->
+
+        <Border Grid.Column="1"
+                Margin="10,15,15,15"
+                Background="#2A2A2A"
+                CornerRadius="8"
+                Padding="15">
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+
+                <StackPanel>
+
+                    <TextBlock Text="Camera Profile"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+
+                    <ComboBox x:Name="CameraProfileComboBox"
+                              Margin="0,5,0,15">
+
+                        <ComboBoxItem IsSelected="True">Auto Detect</ComboBoxItem>
+                        <ComboBoxItem>MoreLogin Portrait</ComboBoxItem>
+                        <ComboBoxItem>Pixel 8</ComboBoxItem>
+                        <ComboBoxItem>Samsung S24</ComboBoxItem>
+                        <ComboBoxItem>Custom</ComboBoxItem>
+
+                    </ComboBox>
+
+                    <TextBlock Text="Fit Mode"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+
+                    <ComboBox x:Name="FitModeComboBox"
+                              Margin="0,5,0,15">
+
+                        <ComboBoxItem IsSelected="True">Auto</ComboBoxItem>
+                        <ComboBoxItem>Fill</ComboBoxItem>
+                        <ComboBoxItem>Fit</ComboBoxItem>
+                        <ComboBoxItem>Smart Crop</ComboBoxItem>
+
+                    </ComboBox>
+
+                    <Separator Margin="0,5"/>
+
+                    <TextBlock Text="Zoom"
+                               Foreground="White"
+                               FontWeight="SemiBold"/>
+
+                    <TextBlock x:Name="ZoomValueText"
+                               Text="100%"
+                               Foreground="#BBBBBB"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="ZoomSlider"
+                            Minimum="1"
+                            Maximum="3"
+                            Value="1"
+                            TickFrequency="0.01"
+                            SmallChange="0.01"
+                            LargeChange="0.10"
+                            ValueChanged="ZoomSlider_ValueChanged"/>
+
+                    <Separator Margin="0,10"/>
+
+                    <TextBlock Text="Horizontal"
+                               Foreground="White"
+                               FontWeight="SemiBold"/>
+
+                    <TextBlock x:Name="HorizontalValueText"
+                               Text="0"
+                               Foreground="#BBBBBB"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="XSlider"
+                            Minimum="-500"
+                            Maximum="500"
+                            Value="0"
+                            ValueChanged="XSlider_ValueChanged"/>
+
+                    <Separator Margin="0,10"/>
+
+                    <TextBlock Text="Vertical"
+                               Foreground="White"
+                               FontWeight="SemiBold"/>
+
+                    <TextBlock x:Name="VerticalValueText"
+                               Text="0"
+                               Foreground="#BBBBBB"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="YSlider"
+                            Minimum="-500"
+                            Maximum="500"
+                            Value="0"
+                            ValueChanged="YSlider_ValueChanged"/>
+
+                    <Separator Margin="0,10"/>
+
+                    <TextBlock Text="Rotation"
+                               Foreground="White"
+                               FontWeight="SemiBold"/>
+
+                    <TextBlock x:Name="RotationValueText"
+                               Text="0°"
+                               Foreground="#BBBBBB"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="RotationSlider"
+                            Minimum="-180"
+                            Maximum="180"
+                            Value="0"
+                            ValueChanged="RotationSlider_ValueChanged"/>
+
+                    <Separator Margin="0,10"/>
+
+                    <CheckBox x:Name="RememberFramingCheckBox"
+                              Content="Remember Framing"
+                              Foreground="White"
+                              Margin="0,0,0,15"/>
+
+                    <Button x:Name="ResetButton"
+                            Content="↺ Reset Framing"
+                            Height="36"
+                            Click="ResetButton_Click"/>
+
+                </StackPanel>
+
+            </ScrollViewer>
+
+        </Border>
+
+        <!-- Status Bar -->
+
+        <StatusBar Grid.Row="1"
+                   Grid.ColumnSpan="2">
 
             <StatusBarItem>
-                <TextBlock Text="Ready"/>
+
+                <TextBlock x:Name="StatusText"
+                           Text="Ready"/>
+
             </StatusBarItem>
 
             <Separator/>
 
-            <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock Text="1080 × 1920 @30 FPS"/>
+            <StatusBarItem>
+
+                <TextBlock x:Name="ResolutionText"
+                           Text="1080 × 1920 @30 FPS"/>
+
             </StatusBarItem>
 
         </StatusBar>

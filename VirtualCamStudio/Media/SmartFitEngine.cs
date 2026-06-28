@@ -2,6 +2,17 @@
 
 namespace VirtualCamStudio.Media
 {
+    /// <summary>
+    /// DEPRECATED: SmartFitEngine is no longer used.
+    /// 
+    /// The rendering pipeline has been refactored. ViewportEngine now handles
+    /// all canvas fitting and rendering in a single unified pass directly from
+    /// the original source image.
+    /// 
+    /// This class is kept for reference and potential utility functions.
+    /// Consider removing if no other code depends on it.
+    /// </summary>
+    [System.Obsolete("Use ViewportEngine instead. This class is no longer part of the active rendering pipeline.")]
     public class SmartFitEngine
     {
         public Mat Fit(Mat source, int targetWidth, int targetHeight)
