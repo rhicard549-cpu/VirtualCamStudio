@@ -260,6 +260,9 @@ namespace VirtualCamStudio
 
             RenderPreview();
         }
-    }
-}
+
+        // ============================================
+            }
+        }
+
 

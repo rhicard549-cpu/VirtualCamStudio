@@ -65,6 +65,8 @@
 
                 <StackPanel>
 
+                    <!-- Camera Profile Section -->
+
                     <TextBlock Text="Camera Profile"
                                Foreground="White"
                                FontWeight="Bold"/>
