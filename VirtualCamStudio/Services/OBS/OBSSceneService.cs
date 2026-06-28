@@ -43,10 +43,166 @@ namespace VirtualCamStudio.Services.OBS
         // ============================================
 
         /// <summary>
-        /// Ensures the "VirtualCam Studio" scene exists, creating it if necessary.
-        /// Does not switch to the scene - call SwitchToVirtualCamSceneAsync() for that.
+        /// Checks if a scene with the specified name exists in OBS.
         /// </summary>
-        /// <returns>True if the scene exists or was created successfully, false otherwise</returns>
+        /// <param name="sceneName">The name of the scene to check</param>
+        /// <returns>True if the scene exists, false otherwise</returns>
+        public async Task<bool> SceneExistsAsync(string sceneName)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    Debug.WriteLine("[OBSSceneService] Cannot check scene existence - not connected to OBS.");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(sceneName))
+                {
+                    Debug.WriteLine("[OBSSceneService] Invalid scene name provided.");
+                    return false;
+                }
+
+                var sceneNames = await GetSceneNamesAsync();
+                bool exists = sceneNames.Contains(sceneName);
+
+                Debug.WriteLine($"[OBSSceneService] Scene '{sceneName}' exists: {exists}");
+                return exists;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSSceneService] Error in SceneExistsAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Creates a new scene in OBS with the specified name.
+        /// Does not switch to the scene after creation.
+        /// </summary>
+        /// <param name="sceneName">The name of the scene to create</param>
+        /// <returns>True if the scene was created successfully, false otherwise</returns>
+        public async Task<bool> CreateSceneAsync(string sceneName)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    Debug.WriteLine("[OBSSceneService] Cannot create scene - not connected to OBS.");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(sceneName))
+                {
+                    Debug.WriteLine("[OBSSceneService] Invalid scene name provided.");
+                    return false;
+                }
+
+                // Check if scene already exists
+                bool exists = await SceneExistsAsync(sceneName);
+                if (exists)
+                {
+                    Debug.WriteLine($"[OBSSceneService] Scene '{sceneName}' already exists. Skipping creation.");
+                    return true;
+                }
+
+                Debug.WriteLine($"[OBSSceneService] Creating scene '{sceneName}'...");
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        _obsClient.GetInternalWebsocket().CreateScene(sceneName);
+                        Debug.WriteLine($"[OBSSceneService] Successfully created scene '{sceneName}'.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSSceneService] Error creating scene: {ex.Message}");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSSceneService] Error in CreateSceneAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Switches OBS to the specified scene.
+        /// Does not create the scene if it doesn't exist.
+        /// </summary>
+        /// <param name="sceneName">The name of the scene to switch to</param>
+        /// <returns>True if successfully switched to the scene, false otherwise</returns>
+        public async Task<bool> SwitchToSceneAsync(string sceneName)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    Debug.WriteLine("[OBSSceneService] Cannot switch scene - not connected to OBS.");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(sceneName))
+                {
+                    Debug.WriteLine("[OBSSceneService] Invalid scene name provided.");
+                    return false;
+                }
+
+                // Verify scene exists before attempting to switch
+                bool exists = await SceneExistsAsync(sceneName);
+                if (!exists)
+                {
+                    Debug.WriteLine($"[OBSSceneService] Cannot switch to '{sceneName}' - scene does not exist.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSSceneService] Switching to scene '{sceneName}'...");
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        _obsClient.GetInternalWebsocket().SetCurrentProgramScene(sceneName);
+                        Debug.WriteLine($"[OBSSceneService] Successfully switched to scene '{sceneName}'.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSSceneService] Error switching scene: {ex.Message}");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSSceneService] Error in SwitchToSceneAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the names of all scenes in OBS.
+        /// </summary>
+        /// <returns>Read-only list of scene names, or empty list on error</returns>
+        public async Task<IReadOnlyList<string>> GetScenesAsync()
+        {
+            // Delegate to existing method
+            return await GetSceneNamesAsync();
+        }
+
+        /// <summary>
+        /// Ensures the "VirtualCam Studio" scene exists and switches to it.
+        /// This is the primary method for preparing OBS for VirtualCam Studio output.
+        /// Steps:
+        /// 1. Check if the scene exists
+        /// 2. Create it if it doesn't exist
+        /// 3. Switch to the scene
+        /// </summary>
+        /// <returns>True if the scene is ready and active, false otherwise</returns>
         public async Task<bool> EnsureVirtualCamSceneAsync()
         {
             try
@@ -57,35 +213,37 @@ namespace VirtualCamStudio.Services.OBS
                     return false;
                 }
 
-                Debug.WriteLine($"[OBSSceneService] Checking if scene '{VirtualCamSceneName}' exists...");
+                Debug.WriteLine($"[OBSSceneService] Ensuring scene '{VirtualCamSceneName}' exists and is active...");
 
-                // Get all scene names
-                var sceneNames = await GetSceneNamesAsync();
+                // Step 1: Check if scene exists
+                bool exists = await SceneExistsAsync(VirtualCamSceneName);
 
-                // Check if our scene already exists
-                if (sceneNames.Contains(VirtualCamSceneName))
+                // Step 2: Create if it doesn't exist
+                if (!exists)
                 {
-                    Debug.WriteLine($"[OBSSceneService] Scene '{VirtualCamSceneName}' already exists.");
-                    return true;
-                }
-
-                // Scene doesn't exist - create it
-                Debug.WriteLine($"[OBSSceneService] Scene '{VirtualCamSceneName}' not found. Creating...");
-
-                return await Task.Run(() =>
-                {
-                    try
+                    Debug.WriteLine($"[OBSSceneService] Scene '{VirtualCamSceneName}' not found. Creating...");
+                    bool created = await CreateSceneAsync(VirtualCamSceneName);
+                    if (!created)
                     {
-                        _obsClient.GetInternalWebsocket().CreateScene(VirtualCamSceneName);
-                        Debug.WriteLine($"[OBSSceneService] Successfully created scene '{VirtualCamSceneName}'.");
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[OBSSceneService] Error creating scene: {ex.Message}");
+                        Debug.WriteLine($"[OBSSceneService] Failed to create scene '{VirtualCamSceneName}'.");
                         return false;
                     }
-                });
+                }
+                else
+                {
+                    Debug.WriteLine($"[OBSSceneService] Scene '{VirtualCamSceneName}' already exists.");
+                }
+
+                // Step 3: Switch to the scene
+                bool switched = await SwitchToSceneAsync(VirtualCamSceneName);
+                if (!switched)
+                {
+                    Debug.WriteLine($"[OBSSceneService] Failed to switch to scene '{VirtualCamSceneName}'.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSSceneService] Scene '{VirtualCamSceneName}' is ready and active.");
+                return true;
             }
             catch (Exception ex)
             {

@@ -32,6 +32,7 @@ namespace VirtualCamStudio
         private readonly OutputManager _outputManager = new();
         private readonly VirtualCameraService _virtualCamera = new();
         private readonly Services.OBS.OBSClient _obsClient = new();
+        private readonly Services.OBS.OBSSceneService _obsSceneService;
 
         // Mouse drag state
         private bool _isDragging = false;
@@ -51,6 +52,9 @@ namespace VirtualCamStudio
         {
             InitializeComponent();
             MediaListBox.ItemsSource = MediaItems;
+
+            // Initialize OBS scene service
+            _obsSceneService = new Services.OBS.OBSSceneService(_obsClient);
 
             // Register preview as an output target
             var previewTarget = new PreviewOutputTarget(PreviewImage);
@@ -993,6 +997,69 @@ namespace VirtualCamStudio
                 StopVirtualCameraButton.Content = "Stop Virtual Camera";
                 StatusText.Text = $"Error: {ex.Message}";
                 MessageBox.Show($"Error stopping virtual camera: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
+            }
+        }
+
+        // ============================================
+        // OBS Scene Setup (Temporary Test)
+        // ============================================
+
+        /// <summary>
+        /// Handles the Setup OBS Scene button click (temporary test).
+        /// Ensures the VirtualCam Studio scene exists and switches to it.
+        /// </summary>
+        private async void SetupOBSSceneButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    StatusText.Text = "Not connected to OBS";
+                    MessageBox.Show("Please connect to OBS first.", 
+                                    "Not Connected", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Disable button during operation
+                SetupOBSSceneButton.IsEnabled = false;
+                SetupOBSSceneButton.Content = "Setting up...";
+                StatusText.Text = "Setting up OBS scene...";
+
+                // Ensure and switch to VirtualCam Studio scene
+                bool success = await _obsSceneService.EnsureVirtualCamSceneAsync();
+
+                // Re-enable button
+                SetupOBSSceneButton.IsEnabled = true;
+                SetupOBSSceneButton.Content = "Setup OBS Scene";
+
+                if (success)
+                {
+                    StatusText.Text = "Scene ready";
+                    MessageBox.Show("Scene Ready\n\nThe 'VirtualCam Studio' scene is now active in OBS.", 
+                                    "Success", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Scene setup failed";
+                    MessageBox.Show("Scene Setup Failed\n\nUnable to create or switch to the VirtualCam Studio scene.\n\nMake sure OBS is connected and running properly.", 
+                                    "Failed", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                SetupOBSSceneButton.IsEnabled = true;
+                SetupOBSSceneButton.Content = "Setup OBS Scene";
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error setting up OBS scene: {ex.Message}", 
                                 "Error", 
                                 MessageBoxButton.OK, 
                                 MessageBoxImage.Error);
