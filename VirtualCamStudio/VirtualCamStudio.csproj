@@ -12,10 +12,8 @@
     <Folder Include="Assets\" />
     <Folder Include="Camera\" />
     <Folder Include="Core\" />
-    <Folder Include="Helpers\" />
     <Folder Include="Views\" />
     <Folder Include="ViewModels\" />
-    <Folder Include="Services\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -24,6 +22,7 @@
     <PackageReference Include="OpenCvSharp4" Version="4.13.0.20260627" />
     <PackageReference Include="OpenCvSharp4.Extensions" Version="4.13.0.20260627" />
     <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.WpfExtensions" Version="4.13.0.20260627" />
   </ItemGroup>
 
 </Project>

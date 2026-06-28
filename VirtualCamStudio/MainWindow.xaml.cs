@@ -2,6 +2,8 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using VirtualCamStudio.Helpers;
+using VirtualCamStudio.Services;
 
 namespace VirtualCamStudio
 {
@@ -41,16 +43,14 @@ namespace VirtualCamStudio
             }
         }
 
+        private readonly RenderService _renderService = new();
+
         private void LoadImage(string path)
         {
-            BitmapImage bitmap = new BitmapImage();
+            var frame = _renderService.RenderImage(path);
 
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(path);
-            bitmap.EndInit();
+            PreviewImage.Source = MatToBitmapSource.Convert(frame);
 
-            PreviewImage.Source = bitmap;
             DropText.Visibility = Visibility.Collapsed;
         }
     }
