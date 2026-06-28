@@ -135,6 +135,7 @@ namespace VirtualCamStudio
         /// <summary>
         /// Left-click drag = Pan
         /// Left double-click = Auto Fit (reset zoom and offsets only, keep rotation)
+        /// Middle-click = Reset (same as Auto Fit)
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -158,6 +159,11 @@ namespace VirtualCamStudio
                     PreviewBorder.CaptureMouse();
                     e.Handled = true;
                 }
+            }
+            else if (e.MiddleButton == MouseButtonState.Pressed)
+            {
+                AutoFitPreview();
+                e.Handled = true;
             }
         }
 
