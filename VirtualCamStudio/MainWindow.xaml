@@ -33,8 +33,7 @@
                 MouseDown="PreviewBorder_MouseDown"
                 MouseUp="PreviewBorder_MouseUp"
                 MouseMove="PreviewBorder_MouseMove"
-                MouseWheel="PreviewBorder_MouseWheel"
-                PreviewMouseDown="PreviewBorder_PreviewMouseDown">
+                MouseWheel="PreviewBorder_MouseWheel">
 
             <Grid x:Name="PreviewGrid">
 

@@ -15,8 +15,6 @@ namespace VirtualCamStudio
         // Mouse drag state
         private bool _isDragging = false;
         private Point _lastMousePosition = new Point(0, 0);
-        private DateTime _lastClickTime = DateTime.MinValue;
-        private const double DoubleClickThresholdMs = 300;
 
         public MainWindow()
         {
@@ -136,42 +134,6 @@ namespace VirtualCamStudio
 
         /// <summary>
         /// Left-click drag = Pan
-        /// Middle-click = Reset View
-        /// Double-click = Auto Fit
-        /// </summary>
-        private void PreviewBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-        {
-            if (!_renderService.HasImage)
-                return;
-
-            // Detect double-click
-            DateTime now = DateTime.Now;
-            if ((now - _lastClickTime).TotalMilliseconds < DoubleClickThresholdMs)
-            {
-                // This is a double-click
-                AutoFit();
-                _lastClickTime = DateTime.MinValue; // Reset to prevent triple-click
-                e.Handled = true;
-                return;
-            }
-            _lastClickTime = now;
-
-            if (e.LeftButton == MouseButtonState.Pressed)
-            {
-                _isDragging = true;
-                _lastMousePosition = e.GetPosition(PreviewBorder);
-                PreviewBorder.CaptureMouse();
-                e.Handled = true;
-            }
-            else if (e.MiddleButton == MouseButtonState.Pressed)
-            {
-                ResetView();
-                e.Handled = true;
-            }
-        }
-
-        /// <summary>
-        /// Left-click drag = Pan
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -244,21 +206,6 @@ namespace VirtualCamStudio
             ZoomSlider.Value = newZoom;
 
             e.Handled = true;
-        }
-
-        /// <summary>
-        /// Auto Fit = Reset zoom and pan to center
-        /// </summary>
-        private void AutoFit()
-        {
-            if (!_renderService.HasImage)
-                return;
-
-            ZoomSlider.Value = 1.0;
-            XSlider.Value = 0;
-            YSlider.Value = 0;
-
-            RenderPreview();
         }
 
         // ============================================
