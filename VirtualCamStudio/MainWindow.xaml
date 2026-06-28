@@ -1,0 +1,58 @@
+﻿<Window x:Class="VirtualCamStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VirtualCam Studio"
+        Height="800"
+        Width="1200"
+        Background="#202020"
+        AllowDrop="True"
+        DragOver="Window_DragOver"
+        Drop="Window_Drop">
+
+    <Grid>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="35"/>
+        </Grid.RowDefinitions>
+
+        <Border Margin="15"
+                CornerRadius="8"
+                BorderBrush="#555"
+                BorderThickness="2"
+                Background="#2A2A2A">
+
+            <Grid>
+
+                <Image x:Name="PreviewImage"
+                       Stretch="Uniform"/>
+
+                <TextBlock x:Name="DropText"
+                           Text="📁 Drag an Image or Video Here"
+                           Foreground="White"
+                           FontSize="28"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"/>
+
+            </Grid>
+
+        </Border>
+
+        <StatusBar Grid.Row="1">
+
+            <StatusBarItem>
+                <TextBlock Text="Ready"/>
+            </StatusBarItem>
+
+            <Separator/>
+
+            <StatusBarItem HorizontalAlignment="Right">
+                <TextBlock Text="1080 × 1920 @30 FPS"/>
+            </StatusBarItem>
+
+        </StatusBar>
+
+    </Grid>
+
+</Window>
