@@ -29,6 +29,8 @@ namespace VirtualCamStudio
     {
         private readonly RenderService _renderService = new();
         private readonly CameraProfileService _profileService = new();
+        private readonly OutputManager _outputManager = new();
+        private readonly VirtualCameraService _virtualCamera = new();
 
         // Mouse drag state
         private bool _isDragging = false;
@@ -48,6 +50,13 @@ namespace VirtualCamStudio
         {
             InitializeComponent();
             MediaListBox.ItemsSource = MediaItems;
+
+            // Register preview as an output target
+            var previewTarget = new PreviewOutputTarget(PreviewImage);
+            _outputManager.RegisterTarget(previewTarget);
+
+            // Register virtual camera as an output target
+            _outputManager.RegisterTarget(_virtualCamera);
 
             // Register keyboard shortcuts
             KeyDown += MainWindow_KeyDown;
@@ -296,7 +305,7 @@ namespace VirtualCamStudio
             _renderService.LoadImage(path);
 
             using var frame = _renderService.Render(ActiveProfile);
-            PreviewImage.Source = MatToBitmapSource.Convert(frame);
+            _outputManager.PushFrame(frame);
 
             DropText.Visibility = Visibility.Collapsed;
 
@@ -468,7 +477,7 @@ namespace VirtualCamStudio
                 return;
 
             using var frame = _renderService.Render(ActiveProfile);
-            PreviewImage.Source = MatToBitmapSource.Convert(frame);
+            _outputManager.PushFrame(frame);
         }
 
         // ============================================
