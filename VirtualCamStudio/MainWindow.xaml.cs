@@ -134,18 +134,30 @@ namespace VirtualCamStudio
 
         /// <summary>
         /// Left-click drag = Pan
+        /// Left double-click = Auto Fit (reset zoom and offsets only, keep rotation)
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
             if (!_renderService.HasImage)
                 return;
 
-            if (e.LeftButton == MouseButtonState.Pressed && !_isDragging)
+            if (e.LeftButton == MouseButtonState.Pressed)
             {
-                _isDragging = true;
-                _lastMousePosition = e.GetPosition(PreviewBorder);
-                PreviewBorder.CaptureMouse();
-                e.Handled = true;
+                // Detect double-click
+                if (e.ClickCount == 2)
+                {
+                    AutoFitPreview();
+                    e.Handled = true;
+                    return;
+                }
+
+                if (!_isDragging)
+                {
+                    _isDragging = true;
+                    _lastMousePosition = e.GetPosition(PreviewBorder);
+                    PreviewBorder.CaptureMouse();
+                    e.Handled = true;
+                }
             }
         }
 
@@ -206,6 +218,21 @@ namespace VirtualCamStudio
             ZoomSlider.Value = newZoom;
 
             e.Handled = true;
+        }
+
+        /// <summary>
+        /// Auto Fit = Reset zoom and offsets only (rotation stays unchanged)
+        /// </summary>
+        private void AutoFitPreview()
+        {
+            if (!_renderService.HasImage)
+                return;
+
+            ZoomSlider.Value = 1.0;
+            XSlider.Value = 0;
+            YSlider.Value = 0;
+
+            RenderPreview();
         }
 
         // ============================================
