@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using VirtualCamStudio.Core;
 using VirtualCamStudio.Models;
 
 namespace VirtualCamStudio.Media
@@ -17,6 +18,7 @@ namespace VirtualCamStudio.Media
     {
         /// <summary>
         /// Render the source onto a fixed canvas with specified framing.
+        /// Returns a Frame containing the rendered image.
         /// 
         /// The rendering process:
         /// 1. Calculate the base scale to fit the source onto the canvas (maintaining aspect ratio)
@@ -26,14 +28,14 @@ namespace VirtualCamStudio.Media
         /// 4. Sample from the source at that coordinate
         /// 5. If the coordinate is outside the source, use black (canvas color)
         /// </summary>
-        public Mat Render(
+        public Frame Render(
             Mat source,
             int canvasWidth,
             int canvasHeight,
             FramingSettings framing)
         {
             if (source.Empty())
-                return new Mat();
+                return new Frame(new Mat(), PixelFormat.Unknown);
 
             // Canvas with black background
             Mat canvas = new(
@@ -111,7 +113,16 @@ namespace VirtualCamStudio.Media
                 // If anything fails, return the black canvas
             }
 
-            return canvas;
+            // Determine pixel format based on number of channels
+            PixelFormat pixelFormat = canvas.Channels() switch
+            {
+                1 => PixelFormat.Grayscale,
+                3 => PixelFormat.BGR,
+                4 => PixelFormat.BGRA,
+                _ => PixelFormat.Unknown
+            };
+
+            return new Frame(canvas, pixelFormat, frameNumber: 0);
         }
 
         /// <summary>

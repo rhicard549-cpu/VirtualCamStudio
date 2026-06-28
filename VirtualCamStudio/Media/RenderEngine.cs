@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using VirtualCamStudio.Core;
 using VirtualCamStudio.Models;
 
 namespace VirtualCamStudio.Media
@@ -17,6 +18,7 @@ namespace VirtualCamStudio.Media
 
         /// <summary>
         /// Render the source onto the canvas with specified framing and fit mode.
+        /// Returns a Frame containing the rendered image.
         /// 
         /// FitMode determines how the image scales to fit the canvas:
         /// - Fit: Scale to fit entirely within canvas (may have black letterbox)
@@ -26,14 +28,14 @@ namespace VirtualCamStudio.Media
         /// The actual rendering (zoom, pan, rotation) is delegated to ViewportEngine,
         /// which always works from the original source.
         /// </summary>
-        public Mat Render(
+        public Frame Render(
             Mat source,
             CanvasSettings canvas,
             FitMode mode,
             FramingSettings framing)
         {
             if (source.Empty())
-                return new Mat();
+                return new Frame(new Mat(), PixelFormat.Unknown);
 
             // Delegate to ViewportEngine
             // ViewportEngine handles all transformations internally

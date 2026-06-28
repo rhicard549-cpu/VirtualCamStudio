@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using VirtualCamStudio.Core;
 using VirtualCamStudio.Media;
 using VirtualCamStudio.Models;
 
@@ -69,16 +70,17 @@ namespace VirtualCamStudio.Services
 
         /// <summary>
         /// Render the current image with accumulated framing settings.
+        /// Returns a Frame containing the rendered image with metadata.
         /// 
         /// The original cached image is passed to RenderEngine along with
         /// the current framing settings and canvas dimensions from the active profile.
         /// No image reloading occurs; only the viewport state has changed since the last render call.
         /// </summary>
         /// <param name="profile">The active camera profile (provides display dimensions)</param>
-        public Mat Render(CameraProfile? profile)
+        public Frame Render(CameraProfile? profile)
         {
             if (!HasImage)
-                return new Mat();
+                return new Frame(new Mat(), PixelFormat.Unknown);
 
             // Use profile dimensions if available, otherwise fall back to defaults
             int canvasWidth = profile?.DisplayWidth ?? 1080;

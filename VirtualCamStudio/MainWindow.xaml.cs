@@ -1,16 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Configuration;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 using VirtualCamStudio.Helpers;
 using VirtualCamStudio.Models;
 using VirtualCamStudio.Services;
+using Cv2 = OpenCvSharp.Cv2;
 
 namespace VirtualCamStudio
 {
+    /// <summary>
+    /// Main application window.
+    /// 
+    /// Keyboard Shortcuts:
+    /// - Delete: Remove selected media item
+    /// - Ctrl+Delete: Clear entire media library
+    /// - Arrow Up: Navigate to previous media item
+    /// - Arrow Down: Navigate to next media item
+    /// - Ctrl+A: Focus media library (select first item if none selected)
+    /// </summary>
     public partial class MainWindow : Window
     {
         private readonly RenderService _renderService = new();
@@ -25,9 +39,21 @@ namespace VirtualCamStudio
         /// </summary>
         public CameraProfile? ActiveProfile { get; set; }
 
+        /// <summary>
+        /// Media library collection
+        /// </summary>
+        public ObservableCollection<MediaItem> MediaItems { get; set; } = new();
+
         public MainWindow()
         {
             InitializeComponent();
+            MediaListBox.ItemsSource = MediaItems;
+
+            // Register keyboard shortcuts
+            KeyDown += MainWindow_KeyDown;
+
+            // Register preview size changed handler for safe area overlay
+            PreviewGrid.SizeChanged += PreviewGrid_SizeChanged;
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
@@ -175,16 +201,93 @@ namespace VirtualCamStudio
             if (files.Length == 0)
                 return;
 
-            string file = files[0];
+            bool anyAdded = false;
 
-            string ext = Path.GetExtension(file).ToLower();
-
-            if (ext == ".jpg" ||
-                ext == ".jpeg" ||
-                ext == ".png" ||
-                ext == ".bmp")
+            foreach (string file in files)
             {
-                LoadImage(file);
+                string ext = Path.GetExtension(file).ToLower();
+
+                if (ext == ".jpg" ||
+                    ext == ".jpeg" ||
+                    ext == ".png" ||
+                    ext == ".bmp")
+                {
+                    AddMediaToLibrary(file);
+                    anyAdded = true;
+                }
+            }
+
+            // If at least one file was added and we don't have an active source, load the first one
+            if (anyAdded && MediaItems.Count > 0 && PreviewImage.Source == null)
+            {
+                MediaListBox.SelectedIndex = 0;
+            }
+        }
+
+        /// <summary>
+        /// Adds a media file to the library.
+        /// Generates and caches thumbnail in memory at add time.
+        /// Prevents duplicate entries by checking file path.
+        /// </summary>
+        private void AddMediaToLibrary(string filePath)
+        {
+            // Check if already in library
+            foreach (var item in MediaItems)
+            {
+                if (item.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            // Create media item with thumbnail generated and stored in memory
+            var mediaItem = new MediaItem
+            {
+                FilePath = filePath,
+                FileName = Path.GetFileName(filePath),
+                FileType = Path.GetExtension(filePath).TrimStart('.').ToUpper(),
+                Thumbnail = CreateThumbnail(filePath) // Generated once, stored in memory
+            };
+
+            MediaItems.Add(mediaItem);
+        }
+
+        /// <summary>
+        /// Creates a thumbnail for the given image file.
+        /// Thumbnail is fully loaded into memory and the file handle is released.
+        /// This ensures smooth scrolling without disk I/O.
+        /// Future-compatible: can be extended to generate video thumbnails.
+        /// </summary>
+        private BitmapSource? CreateThumbnail(string filePath)
+        {
+            try
+            {
+                // Load image with explicit memory caching
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+
+                // Use CreateOptions to ensure file handle is released
+                bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+
+                // Load entire image into memory immediately
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+
+                // Decode to thumbnail size to save memory
+                bitmap.DecodePixelWidth = 150;
+
+                // Load from file
+                bitmap.UriSource = new Uri(filePath, UriKind.Absolute);
+
+                bitmap.EndInit();
+
+                // Freeze to make it cross-thread accessible and improve performance
+                bitmap.Freeze();
+
+                return bitmap;
+            }
+            catch (Exception)
+            {
+                // Return null if thumbnail generation fails
+                // Could be extended to return a placeholder image in the future
+                return null;
             }
         }
 
@@ -192,12 +295,114 @@ namespace VirtualCamStudio
         {
             _renderService.LoadImage(path);
 
-            PreviewImage.Source =
-                MatToBitmapSource.Convert(_renderService.Render(ActiveProfile));
+            using var frame = _renderService.Render(ActiveProfile);
+            PreviewImage.Source = MatToBitmapSource.Convert(frame);
 
             DropText.Visibility = Visibility.Collapsed;
 
             StatusText.Text = Path.GetFileName(path);
+        }
+
+        private void MediaListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (MediaListBox.SelectedItem is MediaItem mediaItem)
+            {
+                LoadImage(mediaItem.FilePath);
+            }
+        }
+
+        private void DeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (MediaListBox.SelectedItem is MediaItem mediaItem)
+            {
+                MediaItems.Remove(mediaItem);
+
+                // If library is now empty, clear preview
+                if (MediaItems.Count == 0)
+                {
+                    PreviewImage.Source = null;
+                    DropText.Visibility = Visibility.Visible;
+                    StatusText.Text = "Ready";
+                }
+            }
+        }
+
+        private void ClearButton_Click(object sender, RoutedEventArgs e)
+        {
+            MediaItems.Clear();
+            PreviewImage.Source = null;
+            DropText.Visibility = Visibility.Visible;
+            StatusText.Text = "Ready";
+        }
+
+        /// <summary>
+        /// Handles keyboard shortcuts for media library navigation and management.
+        /// </summary>
+        private void MainWindow_KeyDown(object sender, KeyEventArgs e)
+        {
+            // Check if MediaListBox has focus or is in focus scope
+            bool mediaListHasFocus = MediaListBox.IsKeyboardFocusWithin || MediaListBox.IsFocused;
+
+            // Delete - Remove selected media
+            if (e.Key == Key.Delete && !e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                if (MediaListBox.SelectedItem != null)
+                {
+                    DeleteButton_Click(this, new RoutedEventArgs());
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            // Ctrl+Delete - Clear library
+            if (e.Key == Key.Delete && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                if (MediaItems.Count > 0)
+                {
+                    ClearButton_Click(this, new RoutedEventArgs());
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            // Arrow Up - Previous media
+            if (e.Key == Key.Up && mediaListHasFocus)
+            {
+                if (MediaListBox.SelectedIndex > 0)
+                {
+                    MediaListBox.SelectedIndex--;
+                    MediaListBox.ScrollIntoView(MediaListBox.SelectedItem);
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            // Arrow Down - Next media
+            if (e.Key == Key.Down && mediaListHasFocus)
+            {
+                if (MediaListBox.SelectedIndex < MediaItems.Count - 1)
+                {
+                    MediaListBox.SelectedIndex++;
+                    MediaListBox.ScrollIntoView(MediaListBox.SelectedItem);
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            // Ctrl+A - Select all (focus media list)
+            if (e.Key == Key.A && e.KeyboardDevice.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                if (MediaItems.Count > 0)
+                {
+                    MediaListBox.Focus();
+                    if (MediaListBox.SelectedIndex == -1)
+                    {
+                        MediaListBox.SelectedIndex = 0;
+                    }
+                    e.Handled = true;
+                }
+                return;
+            }
         }
 
         private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -262,8 +467,8 @@ namespace VirtualCamStudio
             if (!_renderService.HasImage)
                 return;
 
-            PreviewImage.Source =
-                MatToBitmapSource.Convert(_renderService.Render(ActiveProfile));
+            using var frame = _renderService.Render(ActiveProfile);
+            PreviewImage.Source = MatToBitmapSource.Convert(frame);
         }
 
         // ============================================
@@ -295,6 +500,7 @@ namespace VirtualCamStudio
                     _isDragging = true;
                     _lastMousePosition = e.GetPosition(PreviewBorder);
                     PreviewBorder.CaptureMouse();
+                    PreviewBorder.Cursor = Cursors.Hand;
                     e.Handled = true;
                 }
             }
@@ -314,12 +520,13 @@ namespace VirtualCamStudio
             {
                 _isDragging = false;
                 PreviewBorder.ReleaseMouseCapture();
+                PreviewBorder.Cursor = Cursors.Arrow;
                 e.Handled = true;
             }
         }
 
         /// <summary>
-        /// Left-click drag = Pan
+        /// Left-click drag = Pan with clamping to keep image partially visible
         /// </summary>
         private void PreviewBorder_MouseMove(object sender, MouseEventArgs e)
         {
@@ -333,9 +540,17 @@ namespace VirtualCamStudio
             double newX = XSlider.Value + delta.X;
             double newY = YSlider.Value + delta.Y;
 
-            // Clamp to slider ranges
-            newX = System.Math.Max(XSlider.Minimum, System.Math.Min(XSlider.Maximum, newX));
-            newY = System.Math.Max(YSlider.Minimum, System.Math.Min(YSlider.Maximum, newY));
+            // Calculate dynamic pan limits based on zoom level to keep image partially visible
+            // At higher zoom, allow more pan; at lower zoom, restrict pan range
+            double zoom = ZoomSlider.Value;
+            double panLimitFactor = zoom * 600; // Base limit that scales with zoom
+
+            // Clamp pan to keep at least 20% of the image visible
+            double maxPan = panLimitFactor;
+            double minPan = -panLimitFactor;
+
+            newX = System.Math.Max(minPan, System.Math.Min(maxPan, newX));
+            newY = System.Math.Max(minPan, System.Math.Min(maxPan, newY));
 
             XSlider.Value = newX;
             YSlider.Value = newY;
@@ -345,16 +560,16 @@ namespace VirtualCamStudio
         }
 
         /// <summary>
-        /// Mouse wheel = Zoom at cursor
+        /// Mouse wheel = Smooth zoom with consistent steps
         /// </summary>
         private void PreviewBorder_MouseWheel(object sender, MouseWheelEventArgs e)
         {
             if (!_renderService.HasImage)
                 return;
 
-            // Zoom step: +0.1 per wheel click
-            double zoomStep = 0.1;
-            double newZoom = ZoomSlider.Value + (e.Delta > 0 ? zoomStep : -zoomStep);
+            // Smooth zoom step: +0.1 per wheel click (120 delta units)
+            double zoomStep = 0.1 * (e.Delta / 120.0);
+            double newZoom = ZoomSlider.Value + zoomStep;
 
             // Clamp to zoom range
             newZoom = System.Math.Max(ZoomSlider.Minimum, System.Math.Min(ZoomSlider.Maximum, newZoom));
@@ -397,6 +612,139 @@ namespace VirtualCamStudio
 
             // Immediately redraw with the new profile's dimensions
             RenderPreview();
+        }
+
+        /// <summary>
+        /// Updates safe area overlay rectangles when preview size changes.
+        /// </summary>
+        private void PreviewGrid_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            UpdateSafeAreaOverlay();
+        }
+
+        /// <summary>
+        /// Calculates and positions the safe area overlay rectangles.
+        /// Action Safe: 90% of preview area
+        /// Title Safe: 95% of preview area
+        /// </summary>
+        private void UpdateSafeAreaOverlay()
+        {
+            double width = PreviewGrid.ActualWidth;
+            double height = PreviewGrid.ActualHeight;
+
+            if (width <= 0 || height <= 0)
+                return;
+
+            // Action Safe Area (90%)
+            double actionSafeWidth = width * 0.90;
+            double actionSafeHeight = height * 0.90;
+            double actionSafeLeft = (width - actionSafeWidth) / 2;
+            double actionSafeTop = (height - actionSafeHeight) / 2;
+
+            Canvas.SetLeft(ActionSafeRect, actionSafeLeft);
+            Canvas.SetTop(ActionSafeRect, actionSafeTop);
+            ActionSafeRect.Width = actionSafeWidth;
+            ActionSafeRect.Height = actionSafeHeight;
+
+            // Title Safe Area (95%)
+            double titleSafeWidth = width * 0.95;
+            double titleSafeHeight = height * 0.95;
+            double titleSafeLeft = (width - titleSafeWidth) / 2;
+            double titleSafeTop = (height - titleSafeHeight) / 2;
+
+            Canvas.SetLeft(TitleSafeRect, titleSafeLeft);
+            Canvas.SetTop(TitleSafeRect, titleSafeTop);
+            TitleSafeRect.Width = titleSafeWidth;
+            TitleSafeRect.Height = titleSafeHeight;
+        }
+
+        /// <summary>
+        /// Toggles checkerboard background visibility.
+        /// </summary>
+        private void ShowCheckerboardCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (CheckerboardBackground == null)
+                return;
+
+            CheckerboardBackground.Visibility = ShowCheckerboardCheckBox.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Toggles safe area overlay visibility.
+        /// </summary>
+        private void ShowSafeAreaCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (SafeAreaOverlay == null)
+                return;
+
+            SafeAreaOverlay.Visibility = ShowSafeAreaCheckBox.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        // ============================================
+        // Export Handlers
+        // ============================================
+
+        /// <summary>
+        /// Exports the current rendered frame to a PNG file.
+        /// Captures exactly what ViewportEngine renders (zoom/pan/rotation/background)
+        /// but excludes UI overlays like the safe area guide.
+        /// </summary>
+        private void ExportCurrentFrame_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_renderService.HasImage)
+            {
+                StatusText.Text = "No image to export";
+                return;
+            }
+
+            // Generate default filename with timestamp
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string defaultFileName = $"frame_{timestamp}.png";
+
+            // Show save file dialog
+            var dialog = new SaveFileDialog
+            {
+                Title = "Export Current Frame",
+                FileName = defaultFileName,
+                Filter = "PNG Image (*.png)|*.png",
+                DefaultExt = ".png",
+                AddExtension = true
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    // Render the current frame with all transformations
+                    using var frame = _renderService.Render(ActiveProfile);
+
+                    if (!frame.IsValid)
+                    {
+                        StatusText.Text = "Export failed: Invalid frame";
+                        return;
+                    }
+
+                    // Save to PNG using OpenCV
+                    bool success = Cv2.ImWrite(dialog.FileName, frame.Image);
+
+                    if (success)
+                    {
+                        StatusText.Text = $"Exported: {Path.GetFileName(dialog.FileName)}";
+                    }
+                    else
+                    {
+                        StatusText.Text = "Export failed: Could not write file";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    StatusText.Text = $"Export failed: {ex.Message}";
+                }
+            }
         }
 
         // ============================================
