@@ -45,6 +45,16 @@ namespace VirtualCamStudio.Services.OBS
         }
 
         /// <summary>
+        /// Gets the internal OBSWebsocket instance for advanced operations.
+        /// Used by companion services like OBSSceneService for scene/source management.
+        /// </summary>
+        /// <returns>The underlying OBSWebsocket instance</returns>
+        internal OBSWebsocket GetInternalWebsocket()
+        {
+            return _obs;
+        }
+
+        /// <summary>
         /// Connects to the OBS WebSocket server asynchronously.
         /// </summary>
         /// <param name="url">WebSocket URL (default: ws://127.0.0.1:4455)</param>
