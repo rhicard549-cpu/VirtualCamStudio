@@ -807,6 +807,198 @@ namespace VirtualCamStudio
             }
         }
 
+        /// <summary>
+        /// Handles the Refresh OBS Status button click (temporary test).
+        /// Retrieves and displays the current OBS status information.
+        /// </summary>
+        private async void RefreshOBSStatusButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    StatusText.Text = "Not connected to OBS";
+                    MessageBox.Show("Please connect to OBS first.", 
+                                    "Not Connected", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Disable button during status retrieval
+                RefreshOBSStatusButton.IsEnabled = false;
+                RefreshOBSStatusButton.Content = "Refreshing...";
+                StatusText.Text = "Retrieving OBS status...";
+
+                // Get status
+                var status = await _obsClient.GetStatusAsync();
+
+                // Re-enable button
+                RefreshOBSStatusButton.IsEnabled = true;
+                RefreshOBSStatusButton.Content = "Refresh OBS Status";
+
+                if (status != null)
+                {
+                    StatusText.Text = "OBS status retrieved";
+
+                    // Display status in a message box
+                    string statusMessage = $"OBS Studio Status\n" +
+                                         $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                                         $"Version: {status.OBSVersion}\n" +
+                                         $"WebSocket: {status.WebSocketVersion}\n\n" +
+                                         $"Current Scene: {status.CurrentScene}\n\n" +
+                                         $"Virtual Camera: {(status.VirtualCameraActive ? "✓ Active" : "✗ Inactive")}\n" +
+                                         $"Recording: {(status.RecordingActive ? "✓ Active" : "✗ Inactive")}\n" +
+                                         $"Streaming: {(status.StreamingActive ? "✓ Active" : "✗ Inactive")}";
+
+                    MessageBox.Show(statusMessage, 
+                                    "OBS Status", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Failed to retrieve OBS status";
+                    MessageBox.Show("Failed to retrieve OBS status.\n\nMake sure you are connected to OBS.", 
+                                    "Error", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                RefreshOBSStatusButton.IsEnabled = true;
+                RefreshOBSStatusButton.Content = "Refresh OBS Status";
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error retrieving OBS status: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
+            }
+        }
+
+        // ============================================
+        // OBS Virtual Camera Control (Temporary Test)
+        // ============================================
+
+        /// <summary>
+        /// Handles the Start Virtual Camera button click (temporary test).
+        /// Starts the OBS virtual camera and displays the result.
+        /// </summary>
+        private async void StartVirtualCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    StatusText.Text = "Not connected to OBS";
+                    MessageBox.Show("Please connect to OBS first.", 
+                                    "Not Connected", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Disable button during operation
+                StartVirtualCameraButton.IsEnabled = false;
+                StartVirtualCameraButton.Content = "Starting...";
+                StatusText.Text = "Starting virtual camera...";
+
+                // Start virtual camera
+                bool success = await _obsClient.StartVirtualCameraAsync();
+
+                // Re-enable button
+                StartVirtualCameraButton.IsEnabled = true;
+                StartVirtualCameraButton.Content = "Start Virtual Camera";
+
+                if (success)
+                {
+                    StatusText.Text = "Virtual camera started";
+                    MessageBox.Show("OBS Virtual Camera started successfully!", 
+                                    "Success", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Failed to start virtual camera";
+                    MessageBox.Show("Failed to start OBS Virtual Camera.\n\nMake sure OBS is connected and the virtual camera is not already running.", 
+                                    "Failed", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                StartVirtualCameraButton.IsEnabled = true;
+                StartVirtualCameraButton.Content = "Start Virtual Camera";
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error starting virtual camera: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// Handles the Stop Virtual Camera button click (temporary test).
+        /// Stops the OBS virtual camera and displays the result.
+        /// </summary>
+        private async void StopVirtualCameraButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    StatusText.Text = "Not connected to OBS";
+                    MessageBox.Show("Please connect to OBS first.", 
+                                    "Not Connected", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Disable button during operation
+                StopVirtualCameraButton.IsEnabled = false;
+                StopVirtualCameraButton.Content = "Stopping...";
+                StatusText.Text = "Stopping virtual camera...";
+
+                // Stop virtual camera
+                bool success = await _obsClient.StopVirtualCameraAsync();
+
+                // Re-enable button
+                StopVirtualCameraButton.IsEnabled = true;
+                StopVirtualCameraButton.Content = "Stop Virtual Camera";
+
+                if (success)
+                {
+                    StatusText.Text = "Virtual camera stopped";
+                    MessageBox.Show("OBS Virtual Camera stopped successfully!", 
+                                    "Success", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Failed to stop virtual camera";
+                    MessageBox.Show("Failed to stop OBS Virtual Camera.\n\nMake sure OBS is connected and the virtual camera is running.", 
+                                    "Failed", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                StopVirtualCameraButton.IsEnabled = true;
+                StopVirtualCameraButton.Content = "Stop Virtual Camera";
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error stopping virtual camera: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
+            }
+        }
+
         // ============================================
             }
         }

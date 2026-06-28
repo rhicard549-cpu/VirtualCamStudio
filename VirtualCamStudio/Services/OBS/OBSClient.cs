@@ -192,6 +192,177 @@ namespace VirtualCamStudio.Services.OBS
         }
 
         /// <summary>
+        /// Gets the current status of OBS including version, scene, and streaming/recording states.
+        /// </summary>
+        /// <returns>OBSStatus object with current information, or null if not connected</returns>
+        public async Task<Models.OBSStatus?> GetStatusAsync()
+        {
+            try
+            {
+                if (!IsConnected)
+                {
+                    Debug.WriteLine("[OBSClient] Cannot get status - not connected.");
+                    return null;
+                }
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        var status = new Models.OBSStatus();
+
+                        // Get version information
+                        var version = _obs.GetVersion();
+                        status.OBSVersion = version.OBSStudioVersion ?? "Unknown";
+                        status.WebSocketVersion = version.PluginVersion ?? "Unknown";
+
+                        // Get current scene
+                        var currentScene = _obs.GetCurrentProgramScene();
+                        status.CurrentScene = currentScene ?? "Unknown";
+
+                        // Get virtual camera status
+                        var virtualCamStatus = _obs.GetVirtualCamStatus();
+                        status.VirtualCameraActive = virtualCamStatus.IsActive;
+
+                        // Get recording status
+                        var recordStatus = _obs.GetRecordStatus();
+                        status.RecordingActive = recordStatus.IsRecording;
+
+                        // Get streaming status
+                        var streamStatus = _obs.GetStreamStatus();
+                        status.StreamingActive = streamStatus.IsActive;
+
+                        Debug.WriteLine($"[OBSClient] Retrieved status: Scene={status.CurrentScene}, " +
+                                      $"VCam={status.VirtualCameraActive}, " +
+                                      $"Recording={status.RecordingActive}, " +
+                                      $"Streaming={status.StreamingActive}");
+
+                        return status;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSClient] Error retrieving status: {ex.Message}");
+                        return null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSClient] Error in GetStatusAsync: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Starts the OBS virtual camera.
+        /// </summary>
+        /// <returns>True if started successfully, false otherwise</returns>
+        public async Task<bool> StartVirtualCameraAsync()
+        {
+            try
+            {
+                if (!IsConnected)
+                {
+                    Debug.WriteLine("[OBSClient] Cannot start virtual camera - not connected.");
+                    return false;
+                }
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        _obs.StartVirtualCam();
+                        Debug.WriteLine("[OBSClient] Virtual camera started successfully.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSClient] Error starting virtual camera: {ex.Message}");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSClient] Error in StartVirtualCameraAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Stops the OBS virtual camera.
+        /// </summary>
+        /// <returns>True if stopped successfully, false otherwise</returns>
+        public async Task<bool> StopVirtualCameraAsync()
+        {
+            try
+            {
+                if (!IsConnected)
+                {
+                    Debug.WriteLine("[OBSClient] Cannot stop virtual camera - not connected.");
+                    return false;
+                }
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        _obs.StopVirtualCam();
+                        Debug.WriteLine("[OBSClient] Virtual camera stopped successfully.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSClient] Error stopping virtual camera: {ex.Message}");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSClient] Error in StopVirtualCameraAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Checks if the OBS virtual camera is currently running.
+        /// </summary>
+        /// <returns>True if running, false otherwise</returns>
+        public async Task<bool> IsVirtualCameraRunningAsync()
+        {
+            try
+            {
+                if (!IsConnected)
+                {
+                    Debug.WriteLine("[OBSClient] Cannot check virtual camera status - not connected.");
+                    return false;
+                }
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        var status = _obs.GetVirtualCamStatus();
+                        bool isRunning = status.IsActive;
+                        Debug.WriteLine($"[OBSClient] Virtual camera running: {isRunning}");
+                        return isRunning;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSClient] Error checking virtual camera status: {ex.Message}");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSClient] Error in IsVirtualCameraRunningAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Disposes the client and releases resources.
         /// </summary>
         public void Dispose()
