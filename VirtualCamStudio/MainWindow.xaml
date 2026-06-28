@@ -28,9 +28,15 @@
                 CornerRadius="8"
                 BorderBrush="#555"
                 BorderThickness="2"
-                Background="#2A2A2A">
+                Background="#2A2A2A"
+                x:Name="PreviewBorder"
+                MouseDown="PreviewBorder_MouseDown"
+                MouseUp="PreviewBorder_MouseUp"
+                MouseMove="PreviewBorder_MouseMove"
+                MouseWheel="PreviewBorder_MouseWheel"
+                PreviewMouseDown="PreviewBorder_PreviewMouseDown">
 
-            <Grid>
+            <Grid x:Name="PreviewGrid">
 
                 <Image x:Name="PreviewImage"
                        Stretch="Uniform"/>
