@@ -8,7 +8,8 @@
         AllowDrop="True"
         DragOver="Window_DragOver"
         Drop="Window_Drop"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
 
     <Grid>
 
@@ -182,6 +183,158 @@
                     </Button.Style>
                 </Button>
 
+                <!-- Separator -->
+                <Border Width="1"
+                        Height="24"
+                        Background="#444"
+                        Margin="15,0,15,0"
+                        VerticalAlignment="Center"/>
+
+                <!-- Temporary Video Playback Controls -->
+                <TextBlock Text="Video:"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Margin="0,0,10,0"/>
+
+                <Button x:Name="PlayButton"
+                        Content="▶ Play"
+                        Width="80"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#00aa00"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="PlayButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#00cc00"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#008800"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="PauseButton"
+                        Content="⏸ Pause"
+                        Width="80"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#ff8800"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="PauseButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#ff9900"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#dd7700"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="StopButton"
+                        Content="⏹ Stop"
+                        Width="80"
+                        Height="28"
+                        Margin="0,0,10,0"
+                        VerticalAlignment="Center"
+                        Background="#cc0000"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="StopButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#dd1111"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#aa0000"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <CheckBox x:Name="LoopCheckBox"
+                          Content="Loop"
+                          Foreground="White"
+                          VerticalAlignment="Center"
+                          FontWeight="SemiBold"
+                          IsEnabled="False"
+                          Checked="LoopCheckBox_Changed"
+                          Unchecked="LoopCheckBox_Changed"/>
+
                 <!-- Temporary Virtual Camera Stop Button -->
                 <Button x:Name="StopVirtualCameraButton"
                         Content="Stop Virtual Camera"
@@ -254,6 +407,45 @@
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
                                     <Setter Property="Background" Value="#7722aa"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Temporary OBS Source Setup Button -->
+                <Button x:Name="SetupPreviewSourceButton"
+                        Content="Setup Preview Source"
+                        Width="170"
+                        Height="28"
+                        Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Background="#cc6600"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        Click="SetupPreviewSourceButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#dd7711"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#aa5500"/>
                                 </Trigger>
                             </Style.Triggers>
                         </Style>

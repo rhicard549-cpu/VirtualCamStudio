@@ -8,10 +8,13 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
+using OpenCvSharp;
+using VirtualCamStudio.Core;
 using VirtualCamStudio.Helpers;
 using VirtualCamStudio.Models;
 using VirtualCamStudio.Services;
 using Cv2 = OpenCvSharp.Cv2;
+using WpfPoint = System.Windows.Point;
 
 namespace VirtualCamStudio
 {
@@ -25,7 +28,7 @@ namespace VirtualCamStudio
     /// - Arrow Down: Navigate to next media item
     /// - Ctrl+A: Focus media library (select first item if none selected)
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : System.Windows.Window
     {
         private readonly RenderService _renderService = new();
         private readonly CameraProfileService _profileService = new();
@@ -33,10 +36,25 @@ namespace VirtualCamStudio
         private readonly VirtualCameraService _virtualCamera = new();
         private readonly Services.OBS.OBSClient _obsClient = new();
         private readonly Services.OBS.OBSSceneService _obsSceneService;
+        private readonly Services.OBS.OBSSourceService _obsSourceService;
+        private readonly Services.OBS.OBSImageOutput _obsImageOutput;
+
+        // Video playback
+        private readonly Media.VideoPlayer _videoPlayer = new();
+        private readonly Media.ViewportEngine _viewportEngine = new();
+        private Media.PlaybackEngine? _playbackEngine;
+
+        // Current media state
+        private Mat? _currentMediaFrame;  // Current frame in memory (image or video frame)
+        private bool _isVideoActive = false;  // True if current media is a video
+        private readonly FramingSettings _framingSettings = new();  // Shared framing state
+
+        // Event suppression
+        private bool _suppressSliderEvents = false;  // Prevent event cascade during programmatic updates
 
         // Mouse drag state
         private bool _isDragging = false;
-        private Point _lastMousePosition = new Point(0, 0);
+        private WpfPoint _lastMousePosition = new WpfPoint(0, 0);
 
         /// <summary>
         /// The currently selected camera profile
@@ -50,29 +68,82 @@ namespace VirtualCamStudio
 
         public MainWindow()
         {
-            InitializeComponent();
-            MediaListBox.ItemsSource = MediaItems;
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Constructor started");
 
-            // Initialize OBS scene service
-            _obsSceneService = new Services.OBS.OBSSceneService(_obsClient);
+                InitializeComponent();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] InitializeComponent completed");
 
-            // Register preview as an output target
-            var previewTarget = new PreviewOutputTarget(PreviewImage);
-            _outputManager.RegisterTarget(previewTarget);
+                MediaListBox.ItemsSource = MediaItems;
+                System.Diagnostics.Debug.WriteLine("[MainWindow] MediaListBox bound");
 
-            // Register virtual camera as an output target
-            _outputManager.RegisterTarget(_virtualCamera);
+                // Initialize OBS services
+                _obsSceneService = new Services.OBS.OBSSceneService(_obsClient);
+                _obsSourceService = new Services.OBS.OBSSourceService(_obsClient);
+                _obsImageOutput = new Services.OBS.OBSImageOutput();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] OBS services initialized");
 
-            // Register keyboard shortcuts
-            KeyDown += MainWindow_KeyDown;
+                // Register preview as an output target
+                var previewTarget = new PreviewOutputTarget(PreviewImage);
+                _outputManager.RegisterTarget(previewTarget);
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Preview target registered");
 
-            // Register preview size changed handler for safe area overlay
-            PreviewGrid.SizeChanged += PreviewGrid_SizeChanged;
+                // Register virtual camera as an output target
+                _outputManager.RegisterTarget(_virtualCamera);
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Virtual camera registered");
+
+                // Register keyboard shortcuts
+                KeyDown += MainWindow_KeyDown;
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Keyboard shortcuts registered");
+
+                // Register preview size changed handler for safe area overlay
+                PreviewGrid.SizeChanged += PreviewGrid_SizeChanged;
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Size changed handler registered");
+
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Constructor completed successfully");
+            }
+            catch (Exception ex)
+            {
+                string error = $"MainWindow Constructor Error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}";
+                System.Diagnostics.Debug.WriteLine(error);
+
+                // Write to desktop log
+                try
+                {
+                    string logPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                        "VirtualCamStudio_Error.log");
+                    File.AppendAllText(logPath, $"\n[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {error}\n");
+                }
+                catch { }
+
+                MessageBox.Show(
+                    $"Failed to initialize main window:\n\n{ex.Message}\n\nCheck Desktop\\VirtualCamStudio_Error.log for details.",
+                    "Initialization Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+
+                throw; // Re-throw to let App.xaml.cs exception handler catch it
+            }
         }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LoadAndPopulateCameraProfiles();
+        }
+
+        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            // Stop video playback
+            StopVideoPlayback();
+
+            // Dispose current media frame
+            _currentMediaFrame?.Dispose();
+            _currentMediaFrame = null;
+
+            // Dispose video player
+            _videoPlayer?.Dispose();
         }
 
         /// <summary>
@@ -219,8 +290,9 @@ namespace VirtualCamStudio
 
             foreach (string file in files)
             {
-                string ext = Path.GetExtension(file).ToLower();
+                string ext = Path.GetExtension(file).ToLowerInvariant();
 
+                // Supported image formats
                 if (ext == ".jpg" ||
                     ext == ".jpeg" ||
                     ext == ".png" ||
@@ -228,6 +300,21 @@ namespace VirtualCamStudio
                 {
                     AddMediaToLibrary(file);
                     anyAdded = true;
+                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Image detected: {file}");
+                }
+                // Supported video formats
+                else if (ext == ".mp4" ||
+                         ext == ".mov" ||
+                         ext == ".avi" ||
+                         ext == ".mkv")
+                {
+                    AddMediaToLibrary(file);
+                    anyAdded = true;
+                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Video detected: {file}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Unsupported file type: {file} ({ext})");
                 }
             }
 
@@ -265,12 +352,39 @@ namespace VirtualCamStudio
         }
 
         /// <summary>
-        /// Creates a thumbnail for the given image file.
+        /// Creates a thumbnail for the given media file (image or video).
+        /// For images: loads and scales the image.
+        /// For videos: extracts and scales the first frame.
         /// Thumbnail is fully loaded into memory and the file handle is released.
         /// This ensures smooth scrolling without disk I/O.
-        /// Future-compatible: can be extended to generate video thumbnails.
         /// </summary>
         private BitmapSource? CreateThumbnail(string filePath)
+        {
+            try
+            {
+                string ext = Path.GetExtension(filePath).ToLowerInvariant();
+                bool isVideo = ext == ".mp4" || ext == ".mov" || ext == ".avi" || ext == ".mkv";
+
+                if (isVideo)
+                {
+                    return CreateVideoThumbnail(filePath);
+                }
+                else
+                {
+                    return CreateImageThumbnail(filePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CreateThumbnail] Error: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Creates a thumbnail from an image file.
+        /// </summary>
+        private BitmapSource? CreateImageThumbnail(string filePath)
         {
             try
             {
@@ -297,24 +411,374 @@ namespace VirtualCamStudio
 
                 return bitmap;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Return null if thumbnail generation fails
-                // Could be extended to return a placeholder image in the future
+                System.Diagnostics.Debug.WriteLine($"[CreateImageThumbnail] Error: {ex.Message}");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Creates a thumbnail from a video file by extracting the first frame.
+        /// </summary>
+        private BitmapSource? CreateVideoThumbnail(string filePath)
+        {
+            Media.VideoPlayer? videoPlayer = null;
+            try
+            {
+                videoPlayer = new Media.VideoPlayer();
+
+                if (!videoPlayer.Open(filePath))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Failed to open video: {filePath}");
+                    return null;
+                }
+
+                // Read first frame
+                if (videoPlayer.ReadNextFrame(out Mat frame))
+                {
+                    try
+                    {
+                        // Scale to thumbnail size (150px width)
+                        int thumbWidth = 150;
+                        int thumbHeight = (int)(frame.Height * (thumbWidth / (double)frame.Width));
+
+                        Mat thumbnail = new Mat();
+                        Cv2.Resize(frame, thumbnail, new OpenCvSharp.Size(thumbWidth, thumbHeight));
+
+                        // Convert to BitmapSource
+                        var bitmapSource = MatToBitmapSource.Convert(thumbnail);
+
+                        thumbnail.Dispose();
+                        frame.Dispose();
+
+                        return bitmapSource;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Error converting frame: {ex.Message}");
+                        frame.Dispose();
+                        return null;
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Failed to read first frame: {filePath}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Error: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                videoPlayer?.Close();
+                videoPlayer?.Dispose();
             }
         }
 
         private void LoadImage(string path)
         {
-            _renderService.LoadImage(path);
+            // Determine if this is a video or image
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            bool isVideo = extension == ".mp4" || extension == ".mov" || extension == ".avi" || extension == ".mkv";
 
-            using var frame = _renderService.Render(ActiveProfile);
-            _outputManager.PushFrame(frame);
+            if (isVideo)
+            {
+                LoadVideo(path);
+            }
+            else
+            {
+                LoadImageFile(path);
+            }
 
             DropText.Visibility = Visibility.Collapsed;
-
             StatusText.Text = Path.GetFileName(path);
+        }
+
+        private void LoadImageFile(string path)
+        {
+            System.Diagnostics.Debug.WriteLine($"========================================");
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] File detected: {path}");
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Media type: IMAGE");
+
+            // Stop any existing video playback
+            StopVideoPlayback();
+
+            // Clear any previous video state
+            _isVideoActive = false;
+
+            // Dispose old frame if exists
+            _currentMediaFrame?.Dispose();
+            _currentMediaFrame = null;
+
+            // Load image directly into memory
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Loading image into memory...");
+            var imageProcessor = new Media.ImageProcessor();
+            _currentMediaFrame = imageProcessor.Load(path);
+
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ❌ Failed to load image");
+                StatusText.Text = "Failed to load image";
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded: {_currentMediaFrame.Width}x{_currentMediaFrame.Height}");
+
+            // Reset framing settings
+            ResetFramingSettings();
+
+            // Update pan slider ranges for new media
+            UpdatePanSliderRanges();
+
+            // Render and display
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Rendering image...");
+            RenderCurrentMedia();
+
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded and displayed successfully");
+
+            // Disable video playback controls
+            UpdatePlaybackControlsState(false);
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Playback controls disabled");
+            System.Diagnostics.Debug.WriteLine($"========================================");
+        }
+
+        private void LoadVideo(string path)
+        {
+            System.Diagnostics.Debug.WriteLine($"========================================");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] File detected: {path}");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Media type: VIDEO");
+
+            // Stop any existing video playback
+            StopVideoPlayback();
+
+            // Open the video
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Opening video with VideoPlayer...");
+            if (!_videoPlayer.Open(path))
+            {
+                string errorMsg = $"Failed to open video: {Path.GetFileName(path)}";
+                StatusText.Text = errorMsg;
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ Open FAILED: {errorMsg}");
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] Possible reasons:");
+                System.Diagnostics.Debug.WriteLine($"  - File is corrupted");
+                System.Diagnostics.Debug.WriteLine($"  - Codec not supported");
+                System.Diagnostics.Debug.WriteLine($"  - File is in use by another application");
+                System.Diagnostics.Debug.WriteLine($"========================================");
+
+                MessageBox.Show(
+                    $"Failed to open video file:\n\n{Path.GetFileName(path)}\n\nPossible reasons:\n• File is corrupted\n• Codec not supported\n• File is in use",
+                    "Video Load Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ Open succeeded");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Width: {_videoPlayer.Width}");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Height: {_videoPlayer.Height}");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] FPS: {_videoPlayer.FPS:F2}");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Frame Count: {_videoPlayer.FrameCount}");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Duration: {_videoPlayer.Duration}");
+
+            // Create new playback engine
+            _playbackEngine = new Media.PlaybackEngine(_videoPlayer);
+            _playbackEngine.FrameReady += PlaybackEngine_FrameReady;
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] PlaybackEngine created");
+
+            // Display the first frame
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Decoding first frame...");
+            bool firstFrameSuccess = DisplayFirstFrame();
+
+            if (firstFrameSuccess)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ First frame decoded and displayed successfully");
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] Preview should now show the first frame");
+                StatusText.Text = $"{Path.GetFileName(path)} (Video ready - press Play)";
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ First frame decode FAILED");
+                StatusText.Text = $"Video opened but first frame failed";
+            }
+
+            // Enable video playback controls
+            UpdatePlaybackControlsState(true);
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Playback controls enabled");
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Video load complete - ready for playback");
+            System.Diagnostics.Debug.WriteLine($"========================================");
+        }
+
+        private bool DisplayFirstFrame()
+        {
+            if (!_videoPlayer.IsOpened)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ VideoPlayer not opened");
+                return false;
+            }
+
+            // Seek to first frame
+            System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Seeking to frame 0...");
+            if (!_videoPlayer.Seek(0))
+            {
+                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Seek to frame 0 failed");
+                return false;
+            }
+
+            // Read and store the first frame
+            System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Reading first frame...");
+            if (_videoPlayer.ReadNextFrame(out Mat frame))
+            {
+                try
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame read: {frame.Width}x{frame.Height}");
+
+                    // Store frame in memory for viewport operations
+                    _currentMediaFrame?.Dispose();
+                    _currentMediaFrame = frame.Clone();
+                    _isVideoActive = true;
+
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame stored in memory");
+
+                    // Reset framing settings
+                    ResetFramingSettings();
+
+                    // Update pan slider ranges for new media
+                    UpdatePanSliderRanges();
+
+                    // Render and display
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Rendering through ViewportEngine...");
+                    RenderCurrentMedia();
+
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame rendered and pushed to output targets");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Error rendering/displaying: {ex.Message}");
+                    frame.Dispose();
+                    return false;
+                }
+                finally
+                {
+                    frame.Dispose();
+                }
+
+                // Reset to first frame for playback
+                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Resetting to frame 0 for playback...");
+                _videoPlayer.Seek(0);
+
+                return true;
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Failed to read first frame");
+                return false;
+            }
+        }
+
+        private void StopVideoPlayback()
+        {
+            if (_playbackEngine != null)
+            {
+                _playbackEngine.Stop();
+                _playbackEngine.FrameReady -= PlaybackEngine_FrameReady;
+                _playbackEngine.Dispose();
+                _playbackEngine = null;
+            }
+
+            if (_videoPlayer.IsOpened)
+            {
+                _videoPlayer.Close();
+            }
+        }
+
+        private void UpdatePlaybackControlsState(bool hasVideo)
+        {
+            // Enable/disable playback controls based on whether video is loaded
+            PlayButton.IsEnabled = hasVideo;
+            PauseButton.IsEnabled = hasVideo;
+            StopButton.IsEnabled = hasVideo;
+            LoopCheckBox.IsEnabled = hasVideo;
+
+            // Reset loop checkbox when switching media
+            if (hasVideo && _playbackEngine != null)
+            {
+                LoopCheckBox.IsChecked = _playbackEngine.Loop;
+            }
+            else
+            {
+                LoopCheckBox.IsChecked = false;
+            }
+        }
+
+        private void PlaybackEngine_FrameReady(object? sender, Core.Frame frame)
+        {
+            // This event is raised from a background thread, so we need to dispatch to UI thread
+            Dispatcher.Invoke(() =>
+            {
+                try
+                {
+                    if (frame == null || !frame.IsValid)
+                        return;
+
+                    // Update stored frame for viewport operations
+                    _currentMediaFrame?.Dispose();
+                    _currentMediaFrame = frame.Image.Clone();
+
+                    // Render and display
+                    RenderCurrentMedia();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PlaybackEngine_FrameReady] Error: {ex.Message}");
+                }
+            });
+        }
+
+        // ============================================
+        // Video Playback Control Handlers
+        // ============================================
+
+        private void PlayButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_playbackEngine != null)
+            {
+                _playbackEngine.Play();
+                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Play clicked");
+            }
+        }
+
+        private void PauseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_playbackEngine != null)
+            {
+                _playbackEngine.Pause();
+                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Pause clicked");
+            }
+        }
+
+        private void StopButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_playbackEngine != null)
+            {
+                _playbackEngine.Stop();
+
+                // Display first frame when stopped
+                DisplayFirstFrame();
+
+                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Stop clicked");
+            }
+        }
+
+        private void LoopCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_playbackEngine != null)
+            {
+                _playbackEngine.Loop = LoopCheckBox.IsChecked == true;
+                System.Diagnostics.Debug.WriteLine($"[VideoPlayback] Loop = {_playbackEngine.Loop}");
+            }
         }
 
         private void MediaListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -421,42 +885,73 @@ namespace VirtualCamStudio
 
         private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            _renderService.SetZoom(ZoomSlider.Value);
+            if (_suppressSliderEvents) return;
+
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (ZoomValueText == null) return;
+
+            _framingSettings.Zoom = ZoomSlider.Value;
 
             ZoomValueText.Text = $"{ZoomSlider.Value * 100:0}%";
 
-            RenderPreview();
+            // Update pan slider ranges based on new zoom level
+            UpdatePanSliderRanges();
+
+            RenderCurrentMedia();
         }
 
         private void XSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            _renderService.SetOffset(
-                XSlider.Value,
-                YSlider.Value);
+            if (_suppressSliderEvents) return;
 
-            HorizontalValueText.Text = $"{XSlider.Value:0}";
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (HorizontalValueText == null) return;
 
-            RenderPreview();
+            // Clamp to valid pan bounds
+            var (minX, maxX, minY, maxY) = CalculatePanBounds();
+            double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
+            double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
+
+            _framingSettings.OffsetX = clampedX;
+            _framingSettings.OffsetY = clampedY;
+
+            HorizontalValueText.Text = $"{clampedX:0}";
+
+            RenderCurrentMedia();
         }
 
         private void YSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            _renderService.SetOffset(
-                XSlider.Value,
-                YSlider.Value);
+            if (_suppressSliderEvents) return;
 
-            VerticalValueText.Text = $"{YSlider.Value:0}";
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (VerticalValueText == null) return;
 
-            RenderPreview();
+            // Clamp to valid pan bounds
+            var (minX, maxX, minY, maxY) = CalculatePanBounds();
+            double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
+            double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
+
+            _framingSettings.OffsetX = clampedX;
+            _framingSettings.OffsetY = clampedY;
+
+            VerticalValueText.Text = $"{clampedY:0}";
+
+            RenderCurrentMedia();
         }
 
         private void RotationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            _renderService.SetRotation(RotationSlider.Value);
+            if (_suppressSliderEvents) return;
+
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (RotationValueText == null) return;
+
+            _framingSettings.Rotation = RotationSlider.Value;
 
             RotationValueText.Text = $"{RotationSlider.Value:0}°";
 
-            RenderPreview();
+            RenderCurrentMedia();
         }
 
         private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -466,23 +961,136 @@ namespace VirtualCamStudio
 
         private void ResetView()
         {
-            _renderService.Reset();
+            ResetFramingSettings();
 
-            ZoomSlider.Value = 1;
-            XSlider.Value = 0;
-            YSlider.Value = 0;
-            RotationSlider.Value = 0;
+            _suppressSliderEvents = true;
+            try
+            {
+                ZoomSlider.Value = 1;
+                XSlider.Value = 0;
+                YSlider.Value = 0;
+                RotationSlider.Value = 0;
+            }
+            finally
+            {
+                _suppressSliderEvents = false;
+            }
 
-            RenderPreview();
+            RenderCurrentMedia();
         }
 
-        private void RenderPreview()
+        /// <summary>
+        /// Reset framing settings to default
+        /// </summary>
+        private void ResetFramingSettings()
         {
-            if (!_renderService.HasImage)
+            _framingSettings.Zoom = 1.0;
+            _framingSettings.OffsetX = 0;
+            _framingSettings.OffsetY = 0;
+            _framingSettings.Rotation = 0;
+        }
+
+        /// <summary>
+        /// Render the current media frame (image or video) with current framing settings
+        /// </summary>
+        private void RenderCurrentMedia()
+        {
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
                 return;
 
-            using var frame = _renderService.Render(ActiveProfile);
-            _outputManager.PushFrame(frame);
+            // Get canvas dimensions
+            int canvasWidth = ActiveProfile?.DisplayWidth ?? 1080;
+            int canvasHeight = ActiveProfile?.DisplayHeight ?? 1920;
+
+            // Render through ViewportEngine
+            using var renderedFrame = _viewportEngine.Render(
+                _currentMediaFrame,
+                canvasWidth,
+                canvasHeight,
+                _framingSettings);
+
+            // Push to output manager
+            _outputManager.PushFrame(renderedFrame);
+        }
+
+        /// <summary>
+        /// Calculate pan bounds based on media size, zoom level, and canvas size.
+        /// Returns (minX, maxX, minY, maxY) that allow viewing all pixels of the zoomed media
+        /// while preventing empty space around edges.
+        /// </summary>
+        private (double minX, double maxX, double minY, double maxY) CalculatePanBounds()
+        {
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+                return (0, 0, 0, 0);
+
+            // Get canvas dimensions
+            int canvasWidth = ActiveProfile?.DisplayWidth ?? 1080;
+            int canvasHeight = ActiveProfile?.DisplayHeight ?? 1920;
+
+            // Get current zoom
+            double zoom = ZoomSlider.Value;
+
+            // Calculate base scale to fit source onto canvas (maintaining aspect ratio)
+            double baseScale = System.Math.Min(
+                (double)canvasWidth / _currentMediaFrame.Width,
+                (double)canvasHeight / _currentMediaFrame.Height);
+
+            // Apply zoom to get total scale
+            double totalScale = baseScale * zoom;
+
+            // Calculate scaled media dimensions
+            double scaledWidth = _currentMediaFrame.Width * totalScale;
+            double scaledHeight = _currentMediaFrame.Height * totalScale;
+
+            // Calculate how much the scaled media extends beyond the canvas
+            double excessWidth = scaledWidth - canvasWidth;
+            double excessHeight = scaledHeight - canvasHeight;
+
+            // Pan bounds: allow panning to show any part of the media, but no empty space
+            // If media is smaller than canvas, no panning needed (excess is negative)
+            // If media is larger than canvas, allow panning by half the excess in each direction
+            double maxX = System.Math.Max(0, excessWidth / 2.0);
+            double minX = -maxX;
+            double maxY = System.Math.Max(0, excessHeight / 2.0);
+            double minY = -maxY;
+
+            return (minX, maxX, minY, maxY);
+        }
+
+        /// <summary>
+        /// Update pan slider minimum/maximum based on current zoom and media size.
+        /// This ensures sliders can reach all edges of the zoomed media.
+        /// </summary>
+        private void UpdatePanSliderRanges()
+        {
+            // Guard: Don't update if sliders not initialized yet or no media loaded
+            if (XSlider == null || YSlider == null || _currentMediaFrame == null)
+                return;
+
+            var (minX, maxX, minY, maxY) = CalculatePanBounds();
+
+            // Suppress events during programmatic slider updates
+            _suppressSliderEvents = true;
+            try
+            {
+                // Update X slider range
+                XSlider.Minimum = minX;
+                XSlider.Maximum = maxX;
+
+                // Update Y slider range
+                YSlider.Minimum = minY;
+                YSlider.Maximum = maxY;
+
+                // Clamp current values to new ranges
+                if (XSlider.Value < minX) XSlider.Value = minX;
+                if (XSlider.Value > maxX) XSlider.Value = maxX;
+                if (YSlider.Value < minY) YSlider.Value = minY;
+                if (YSlider.Value > maxY) YSlider.Value = maxY;
+            }
+            finally
+            {
+                _suppressSliderEvents = false;
+            }
         }
 
         // ============================================
@@ -496,7 +1104,7 @@ namespace VirtualCamStudio
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (!_renderService.HasImage)
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
                 return;
 
             if (e.LeftButton == MouseButtonState.Pressed)
@@ -540,31 +1148,26 @@ namespace VirtualCamStudio
         }
 
         /// <summary>
-        /// Left-click drag = Pan with clamping to keep image partially visible
+        /// Left-click drag = Pan with clamping to prevent empty space around media
         /// </summary>
         private void PreviewBorder_MouseMove(object sender, MouseEventArgs e)
         {
-            if (!_isDragging || !_renderService.HasImage)
+            if (!_isDragging || _currentMediaFrame == null || _currentMediaFrame.Empty())
                 return;
 
-            Point currentPosition = e.GetPosition(PreviewBorder);
+            WpfPoint currentPosition = e.GetPosition(PreviewBorder);
             Vector delta = currentPosition - _lastMousePosition;
 
             // Apply pan offset based on mouse movement
             double newX = XSlider.Value + delta.X;
             double newY = YSlider.Value + delta.Y;
 
-            // Calculate dynamic pan limits based on zoom level to keep image partially visible
-            // At higher zoom, allow more pan; at lower zoom, restrict pan range
-            double zoom = ZoomSlider.Value;
-            double panLimitFactor = zoom * 600; // Base limit that scales with zoom
+            // Calculate dynamic pan limits based on current zoom and media size
+            var (minX, maxX, minY, maxY) = CalculatePanBounds();
 
-            // Clamp pan to keep at least 20% of the image visible
-            double maxPan = panLimitFactor;
-            double minPan = -panLimitFactor;
-
-            newX = System.Math.Max(minPan, System.Math.Min(maxPan, newX));
-            newY = System.Math.Max(minPan, System.Math.Min(maxPan, newY));
+            // Clamp pan to calculated bounds
+            newX = System.Math.Max(minX, System.Math.Min(maxX, newX));
+            newY = System.Math.Max(minY, System.Math.Min(maxY, newY));
 
             XSlider.Value = newX;
             YSlider.Value = newY;
@@ -578,7 +1181,7 @@ namespace VirtualCamStudio
         /// </summary>
         private void PreviewBorder_MouseWheel(object sender, MouseWheelEventArgs e)
         {
-            if (!_renderService.HasImage)
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
                 return;
 
             // Smooth zoom step: +0.1 per wheel click (120 delta units)
@@ -598,14 +1201,14 @@ namespace VirtualCamStudio
         /// </summary>
         private void AutoFitPreview()
         {
-            if (!_renderService.HasImage)
+            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
                 return;
 
             ZoomSlider.Value = 1.0;
             XSlider.Value = 0;
             YSlider.Value = 0;
 
-            RenderPreview();
+            RenderCurrentMedia();
         }
 
         /// <summary>
@@ -625,7 +1228,7 @@ namespace VirtualCamStudio
             SaveLastSelectedProfile(profileName);
 
             // Immediately redraw with the new profile's dimensions
-            RenderPreview();
+            RenderCurrentMedia();
         }
 
         /// <summary>
@@ -1060,6 +1663,80 @@ namespace VirtualCamStudio
                 SetupOBSSceneButton.Content = "Setup OBS Scene";
                 StatusText.Text = $"Error: {ex.Message}";
                 MessageBox.Show($"Error setting up OBS scene: {ex.Message}", 
+                                "Error", 
+                                MessageBoxButton.OK, 
+                                MessageBoxImage.Error);
+            }
+        }
+
+        // ============================================
+        // OBS Source Setup (Temporary Test)
+        // ============================================
+
+        /// <summary>
+        /// Handles the Setup Preview Source button click (temporary test).
+        /// Ensures the VirtualCam Preview image source exists in the VirtualCam Studio scene.
+        /// </summary>
+        private async void SetupPreviewSourceButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    StatusText.Text = "Not connected to OBS";
+                    MessageBox.Show("Please connect to OBS first.", 
+                                    "Not Connected", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Check if we have an output image to use
+                if (!_obsImageOutput.FileExists)
+                {
+                    StatusText.Text = "No preview image available";
+                    MessageBox.Show("No Preview Image Available\n\nPlease load a media item first to generate a preview image.", 
+                                    "No Image", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
+                // Disable button during operation
+                SetupPreviewSourceButton.IsEnabled = false;
+                SetupPreviewSourceButton.Content = "Setting up...";
+                StatusText.Text = "Setting up preview source...";
+
+                // Ensure the preview source exists and is configured
+                bool success = await _obsSourceService.EnsurePreviewSourceAsync(_obsImageOutput.OutputPath);
+
+                // Re-enable button
+                SetupPreviewSourceButton.IsEnabled = true;
+                SetupPreviewSourceButton.Content = "Setup Preview Source";
+
+                if (success)
+                {
+                    StatusText.Text = "Preview source ready";
+                    MessageBox.Show("Preview Source Ready\n\nThe 'VirtualCam Preview' image source is now configured in OBS.", 
+                                    "Success", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Information);
+                }
+                else
+                {
+                    StatusText.Text = "Source setup failed";
+                    MessageBox.Show("Source Setup Failed\n\nUnable to create or update the preview source.\n\nMake sure OBS is connected and the VirtualCam Studio scene exists.", 
+                                    "Failed", 
+                                    MessageBoxButton.OK, 
+                                    MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                SetupPreviewSourceButton.IsEnabled = true;
+                SetupPreviewSourceButton.Content = "Setup Preview Source";
+                StatusText.Text = $"Error: {ex.Message}";
+                MessageBox.Show($"Error setting up preview source: {ex.Message}", 
                                 "Error", 
                                 MessageBoxButton.OK, 
                                 MessageBoxImage.Error);
