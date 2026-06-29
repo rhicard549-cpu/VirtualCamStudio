@@ -135,6 +135,15 @@ namespace VirtualCamStudio.Services.Rendering
 
                 Debug.WriteLine("[RenderLoop] Starting render loop...");
 
+                // Check if any subscribers exist
+                int subscriberCount = FrameRequested?.GetInvocationList()?.Length ?? 0;
+                Debug.WriteLine($"[RenderLoop] FrameRequested subscribers: {subscriberCount}");
+
+                if (subscriberCount == 0)
+                {
+                    Debug.WriteLine("[RenderLoop] ⚠️ WARNING: No subscribers to FrameRequested event!");
+                }
+
                 _isRunning = true;
                 _isPaused = false;
                 _frameCount = 0;
@@ -143,6 +152,8 @@ namespace VirtualCamStudio.Services.Rendering
 
                 _cancellationTokenSource = new CancellationTokenSource();
                 _renderTask = Task.Run(() => RenderLoopTask(_cancellationTokenSource.Token));
+
+                Debug.WriteLine("[RenderLoop] ✓ Render loop started on background task");
             }
         }
 
@@ -248,10 +259,11 @@ namespace VirtualCamStudio.Services.Rendering
         /// </summary>
         private void RenderLoopTask(CancellationToken cancellationToken)
         {
-            Debug.WriteLine("[RenderLoop] Background task started.");
+            Debug.WriteLine("[RenderLoop.RenderLoopTask] 🚀 Background task started.");
             _stopwatch.Restart();
 
             long lastFrameTicks = 0;
+            int frameCounter = 0;
 
             try
             {
@@ -283,6 +295,13 @@ namespace VirtualCamStudio.Services.Rendering
                     {
                         lastFrameTicks = currentTicks;
 
+                        // Log first frame and then every 90th frame (once every 3 seconds at 30fps)
+                        frameCounter++;
+                        if (frameCounter == 1 || frameCounter % 90 == 0)
+                        {
+                            Debug.WriteLine($"[RenderLoop.RenderLoopTask] Frame #{frameCounter} - Requesting render...");
+                        }
+
                         // Raise frame requested event
                         RaiseFrameRequested();
 
@@ -304,12 +323,12 @@ namespace VirtualCamStudio.Services.Rendering
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderLoop] Error in background task: {ex.Message}");
+                Debug.WriteLine($"[RenderLoop.RenderLoopTask] ❌ Error in background task: {ex.Message}\n{ex.StackTrace}");
             }
             finally
             {
                 _stopwatch.Stop();
-                Debug.WriteLine("[RenderLoop] Background task stopped.");
+                Debug.WriteLine($"[RenderLoop.RenderLoopTask] Background task stopped. Total frames: {frameCounter}");
             }
         }
 
@@ -320,11 +339,20 @@ namespace VirtualCamStudio.Services.Rendering
         {
             try
             {
-                FrameRequested?.Invoke(this, EventArgs.Empty);
+                Debug.WriteLine("[1] RenderLoop fired");
+
+                var handler = FrameRequested;
+                if (handler == null)
+                {
+                    Debug.WriteLine("[RenderLoop.RaiseFrameRequested] ⚠️⚠️⚠️ NO SUBSCRIBERS! Event will not fire! ⚠️⚠️⚠️");
+                    return;
+                }
+
+                handler.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderLoop] Error in FrameRequested handler: {ex.Message}");
+                Debug.WriteLine($"[RenderLoop.RaiseFrameRequested] ❌ EXCEPTION: {ex.Message}\n{ex.StackTrace}");
             }
         }
 

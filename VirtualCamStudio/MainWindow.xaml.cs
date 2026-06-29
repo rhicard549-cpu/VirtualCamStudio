@@ -13,6 +13,8 @@ using VirtualCamStudio.Core;
 using VirtualCamStudio.Helpers;
 using VirtualCamStudio.Models;
 using VirtualCamStudio.Services;
+using VirtualCamStudio.Services.Rendering;
+using VirtualCamStudio.Outputs;
 using Cv2 = OpenCvSharp.Cv2;
 using WpfPoint = System.Windows.Point;
 
@@ -32,22 +34,28 @@ namespace VirtualCamStudio
     {
         private readonly RenderService _renderService = new();
         private readonly CameraProfileService _profileService = new();
-        private readonly OutputManager _outputManager = new();
+        private readonly Services.OutputManager _legacyOutputManager = new();  // Old Frame-based system (for OBS compatibility)
+        private readonly Outputs.OutputManager _outputManager = new();  // New async Frame-based system (Commit 40/42)
         private readonly VirtualCameraService _virtualCamera = new();
         private readonly Services.OBS.OBSClient _obsClient = new();
         private readonly Services.OBS.OBSSceneService _obsSceneService;
         private readonly Services.OBS.OBSSourceService _obsSourceService;
         private readonly Services.OBS.OBSImageOutput _obsImageOutput;
 
+        // Rendering infrastructure (centralized via RenderPipeline)
+        private readonly RenderLoop _renderLoop = new();
+        private readonly Media.MediaController _mediaController = new();
+        private readonly Media.ViewportEngine _viewportEngine = new();
+        private RenderPipeline? _renderPipeline;
+
         // Video playback
         private readonly Media.VideoPlayer _videoPlayer = new();
-        private readonly Media.ViewportEngine _viewportEngine = new();
         private Media.PlaybackEngine? _playbackEngine;
 
         // Current media state
-        private Mat? _currentMediaFrame;  // Current frame in memory (image or video frame)
+        private Mat? _currentMediaFrame;  // Current frame in memory (image or video frame) - DEPRECATED, use MediaController
         private bool _isVideoActive = false;  // True if current media is a video
-        private readonly FramingSettings _framingSettings = new();  // Shared framing state
+        // Framing settings now accessed via _renderPipeline.FramingSettings
 
         // Event suppression
         private bool _suppressSliderEvents = false;  // Prevent event cascade during programmatic updates
@@ -84,14 +92,31 @@ namespace VirtualCamStudio
                 _obsImageOutput = new Services.OBS.OBSImageOutput();
                 System.Diagnostics.Debug.WriteLine("[MainWindow] OBS services initialized");
 
-                // Register preview as an output target
-                var previewTarget = new PreviewOutputTarget(PreviewImage);
-                _outputManager.RegisterTarget(previewTarget);
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Preview target registered");
+                // Register preview output (new Outputs system)
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Creating PreviewOutput for new OutputManager...");
+                var previewOutput = new Outputs.PreviewOutput(PreviewImage);
+                _outputManager.Register(previewOutput);
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ✓ Preview output registered to new OutputManager (count: {_outputManager.OutputCount})");
 
-                // Register virtual camera as an output target
-                _outputManager.RegisterTarget(_virtualCamera);
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Virtual camera registered");
+                // Register legacy outputs for compatibility (old Services system)
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Registering legacy outputs...");
+                var legacyPreviewTarget = new Services.PreviewOutputTarget(PreviewImage);
+                _legacyOutputManager.RegisterTarget(legacyPreviewTarget);
+                _legacyOutputManager.RegisterTarget(_virtualCamera);
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ✓ Legacy outputs registered (count: {_legacyOutputManager.TargetCount})");
+
+                // Initialize RenderPipeline (centralized rendering)
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Creating RenderPipeline...");
+                _renderPipeline = new RenderPipeline(
+                    _renderLoop,
+                    _mediaController,
+                    _viewportEngine,
+                    _legacyOutputManager,  // Legacy Frame-based system for OBS/virtual camera compatibility
+                    _outputManager);        // New async Frame-based system (Commit 40/42)
+
+                // Share framing settings reference
+                // The render pipeline will read from the shared _framingSettings
+                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline initialized");
 
                 // Register keyboard shortcuts
                 KeyDown += MainWindow_KeyDown;
@@ -131,10 +156,25 @@ namespace VirtualCamStudio
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LoadAndPopulateCameraProfiles();
+
+            // Start the render pipeline
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.Start();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline started");
+            }
         }
 
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Stop the render pipeline
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.Stop();
+                _renderPipeline.Dispose();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline stopped");
+            }
+
             // Stop video playback
             StopVideoPlayback();
 
@@ -510,35 +550,31 @@ namespace VirtualCamStudio
             // Clear any previous video state
             _isVideoActive = false;
 
-            // Dispose old frame if exists
+            // Dispose old frame if exists (deprecated path, remove later)
             _currentMediaFrame?.Dispose();
             _currentMediaFrame = null;
 
-            // Load image directly into memory
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Loading image into memory...");
-            var imageProcessor = new Media.ImageProcessor();
-            _currentMediaFrame = imageProcessor.Load(path);
-
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            // Load image via MediaController
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Loading image via MediaController...");
+            if (!_mediaController.Load(path))
             {
                 System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ❌ Failed to load image");
                 StatusText.Text = "Failed to load image";
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded: {_currentMediaFrame.Width}x{_currentMediaFrame.Height}");
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded successfully");
 
-            // Reset framing settings
-            ResetFramingSettings();
+            // Reset framing settings (via RenderPipeline)
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.ResetFraming();
+            }
 
             // Update pan slider ranges for new media
             UpdatePanSliderRanges();
 
-            // Render and display
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Rendering image...");
-            RenderCurrentMedia();
-
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded and displayed successfully");
+            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded and will be rendered by RenderLoop");
 
             // Disable video playback controls
             UpdatePlaybackControlsState(false);
@@ -554,6 +590,17 @@ namespace VirtualCamStudio
 
             // Stop any existing video playback
             StopVideoPlayback();
+
+            // Load video metadata via MediaController first
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Loading video metadata via MediaController...");
+            if (!_mediaController.Load(path))
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ MediaController failed to load video metadata");
+                StatusText.Text = "Failed to load video metadata";
+                return;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ Video metadata loaded via MediaController");
 
             // Open the video
             System.Diagnostics.Debug.WriteLine($"[LoadVideo] Opening video with VideoPlayer...");
@@ -635,28 +682,26 @@ namespace VirtualCamStudio
                 {
                     System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame read: {frame.Width}x{frame.Height}");
 
-                    // Store frame in memory for viewport operations
-                    _currentMediaFrame?.Dispose();
-                    _currentMediaFrame = frame.Clone();
+                    // Update MediaController with the first video frame
+                    _mediaController.UpdateVideoFrame(frame);
                     _isVideoActive = true;
 
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame stored in memory");
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame stored in MediaController");
 
-                    // Reset framing settings
-                    ResetFramingSettings();
+                    // Reset framing settings (via RenderPipeline)
+                    if (_renderPipeline != null)
+                    {
+                        _renderPipeline.ResetFraming();
+                    }
 
                     // Update pan slider ranges for new media
                     UpdatePanSliderRanges();
 
-                    // Render and display
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Rendering through ViewportEngine...");
-                    RenderCurrentMedia();
-
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame rendered and pushed to output targets");
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ First frame ready for RenderLoop");
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Error rendering/displaying: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Error setting up first frame: {ex.Message}");
                     frame.Dispose();
                     return false;
                 }
@@ -723,12 +768,9 @@ namespace VirtualCamStudio
                     if (frame == null || !frame.IsValid)
                         return;
 
-                    // Update stored frame for viewport operations
-                    _currentMediaFrame?.Dispose();
-                    _currentMediaFrame = frame.Image.Clone();
-
-                    // Render and display
-                    RenderCurrentMedia();
+                    // Update MediaController with the new video frame
+                    // RenderLoop will pick it up automatically on the next render cycle
+                    _mediaController.UpdateVideoFrame(frame.Image);
                 }
                 catch (Exception ex)
                 {
@@ -888,16 +930,16 @@ namespace VirtualCamStudio
             if (_suppressSliderEvents) return;
 
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
-            if (ZoomValueText == null) return;
+            if (ZoomValueText == null || _renderPipeline == null) return;
 
-            _framingSettings.Zoom = ZoomSlider.Value;
+            _renderPipeline.FramingSettings.Zoom = ZoomSlider.Value;
 
             ZoomValueText.Text = $"{ZoomSlider.Value * 100:0}%";
 
             // Update pan slider ranges based on new zoom level
             UpdatePanSliderRanges();
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         private void XSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -905,19 +947,19 @@ namespace VirtualCamStudio
             if (_suppressSliderEvents) return;
 
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
-            if (HorizontalValueText == null) return;
+            if (HorizontalValueText == null || _renderPipeline == null) return;
 
             // Clamp to valid pan bounds
             var (minX, maxX, minY, maxY) = CalculatePanBounds();
             double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
             double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
 
-            _framingSettings.OffsetX = clampedX;
-            _framingSettings.OffsetY = clampedY;
+            _renderPipeline.FramingSettings.OffsetX = clampedX;
+            _renderPipeline.FramingSettings.OffsetY = clampedY;
 
             HorizontalValueText.Text = $"{clampedX:0}";
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         private void YSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -925,19 +967,19 @@ namespace VirtualCamStudio
             if (_suppressSliderEvents) return;
 
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
-            if (VerticalValueText == null) return;
+            if (VerticalValueText == null || _renderPipeline == null) return;
 
             // Clamp to valid pan bounds
             var (minX, maxX, minY, maxY) = CalculatePanBounds();
             double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
             double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
 
-            _framingSettings.OffsetX = clampedX;
-            _framingSettings.OffsetY = clampedY;
+            _renderPipeline.FramingSettings.OffsetX = clampedX;
+            _renderPipeline.FramingSettings.OffsetY = clampedY;
 
             VerticalValueText.Text = $"{clampedY:0}";
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         private void RotationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -945,13 +987,13 @@ namespace VirtualCamStudio
             if (_suppressSliderEvents) return;
 
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
-            if (RotationValueText == null) return;
+            if (RotationValueText == null || _renderPipeline == null) return;
 
-            _framingSettings.Rotation = RotationSlider.Value;
+            _renderPipeline.FramingSettings.Rotation = RotationSlider.Value;
 
             RotationValueText.Text = $"{RotationSlider.Value:0}°";
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -961,7 +1003,10 @@ namespace VirtualCamStudio
 
         private void ResetView()
         {
-            ResetFramingSettings();
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.ResetFraming();
+            }
 
             _suppressSliderEvents = true;
             try
@@ -976,41 +1021,18 @@ namespace VirtualCamStudio
                 _suppressSliderEvents = false;
             }
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         /// <summary>
-        /// Reset framing settings to default
+        /// Reset framing settings to default - DEPRECATED, use RenderPipeline.ResetFraming()
         /// </summary>
         private void ResetFramingSettings()
         {
-            _framingSettings.Zoom = 1.0;
-            _framingSettings.OffsetX = 0;
-            _framingSettings.OffsetY = 0;
-            _framingSettings.Rotation = 0;
-        }
-
-        /// <summary>
-        /// Render the current media frame (image or video) with current framing settings
-        /// </summary>
-        private void RenderCurrentMedia()
-        {
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
-                return;
-
-            // Get canvas dimensions
-            int canvasWidth = ActiveProfile?.DisplayWidth ?? 1080;
-            int canvasHeight = ActiveProfile?.DisplayHeight ?? 1920;
-
-            // Render through ViewportEngine
-            using var renderedFrame = _viewportEngine.Render(
-                _currentMediaFrame,
-                canvasWidth,
-                canvasHeight,
-                _framingSettings);
-
-            // Push to output manager
-            _outputManager.PushFrame(renderedFrame);
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.ResetFraming();
+            }
         }
 
         /// <summary>
@@ -1020,7 +1042,11 @@ namespace VirtualCamStudio
         /// </summary>
         private (double minX, double maxX, double minY, double maxY) CalculatePanBounds()
         {
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            if (_mediaController == null || !_mediaController.HasMedia)
+                return (0, 0, 0, 0);
+
+            Mat? currentFrame = _mediaController.GetCurrentFrame();
+            if (currentFrame == null || currentFrame.Empty())
                 return (0, 0, 0, 0);
 
             // Get canvas dimensions
@@ -1032,15 +1058,15 @@ namespace VirtualCamStudio
 
             // Calculate base scale to fit source onto canvas (maintaining aspect ratio)
             double baseScale = System.Math.Min(
-                (double)canvasWidth / _currentMediaFrame.Width,
-                (double)canvasHeight / _currentMediaFrame.Height);
+                (double)canvasWidth / currentFrame.Width,
+                (double)canvasHeight / currentFrame.Height);
 
             // Apply zoom to get total scale
             double totalScale = baseScale * zoom;
 
             // Calculate scaled media dimensions
-            double scaledWidth = _currentMediaFrame.Width * totalScale;
-            double scaledHeight = _currentMediaFrame.Height * totalScale;
+            double scaledWidth = currentFrame.Width * totalScale;
+            double scaledHeight = currentFrame.Height * totalScale;
 
             // Calculate how much the scaled media extends beyond the canvas
             double excessWidth = scaledWidth - canvasWidth;
@@ -1064,7 +1090,7 @@ namespace VirtualCamStudio
         private void UpdatePanSliderRanges()
         {
             // Guard: Don't update if sliders not initialized yet or no media loaded
-            if (XSlider == null || YSlider == null || _currentMediaFrame == null)
+            if (XSlider == null || YSlider == null || _mediaController == null || !_mediaController.HasMedia)
                 return;
 
             var (minX, maxX, minY, maxY) = CalculatePanBounds();
@@ -1104,7 +1130,7 @@ namespace VirtualCamStudio
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            if (_mediaController == null || !_mediaController.HasMedia)
                 return;
 
             if (e.LeftButton == MouseButtonState.Pressed)
@@ -1152,7 +1178,7 @@ namespace VirtualCamStudio
         /// </summary>
         private void PreviewBorder_MouseMove(object sender, MouseEventArgs e)
         {
-            if (!_isDragging || _currentMediaFrame == null || _currentMediaFrame.Empty())
+            if (!_isDragging || _mediaController == null || !_mediaController.HasMedia)
                 return;
 
             WpfPoint currentPosition = e.GetPosition(PreviewBorder);
@@ -1181,7 +1207,7 @@ namespace VirtualCamStudio
         /// </summary>
         private void PreviewBorder_MouseWheel(object sender, MouseWheelEventArgs e)
         {
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            if (_mediaController == null || !_mediaController.HasMedia)
                 return;
 
             // Smooth zoom step: +0.1 per wheel click (120 delta units)
@@ -1201,14 +1227,14 @@ namespace VirtualCamStudio
         /// </summary>
         private void AutoFitPreview()
         {
-            if (_currentMediaFrame == null || _currentMediaFrame.Empty())
+            if (_mediaController == null || !_mediaController.HasMedia)
                 return;
 
             ZoomSlider.Value = 1.0;
             XSlider.Value = 0;
             YSlider.Value = 0;
 
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop
         }
 
         /// <summary>
@@ -1224,11 +1250,16 @@ namespace VirtualCamStudio
             // Retrieve the selected profile
             ActiveProfile = _profileService.GetProfile(profileName);
 
+            // Update RenderPipeline's active profile
+            if (_renderPipeline != null)
+            {
+                _renderPipeline.ActiveProfile = ActiveProfile;
+            }
+
             // Remember the selection
             SaveLastSelectedProfile(profileName);
 
-            // Immediately redraw with the new profile's dimensions
-            RenderCurrentMedia();
+            // Rendering will happen automatically via RenderLoop with new dimensions
         }
 
         /// <summary>

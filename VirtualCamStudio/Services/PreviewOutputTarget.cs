@@ -26,19 +26,30 @@ namespace VirtualCamStudio.Services
         /// <summary>
         /// Receives a frame and displays it in the preview image.
         /// Converts the Frame to BitmapSource immediately (does not store Frame reference).
+        /// Thread-safe: marshals to UI thread if needed.
         /// </summary>
         public void Receive(Frame frame)
         {
             if (frame == null || !frame.IsValid)
                 return;
 
-            // Convert frame to BitmapSource and update preview
-            // This must happen immediately - we don't store the frame reference
+            // Convert frame to BitmapSource immediately (while Mat is still valid)
             var bitmapSource = MatToBitmapSource.Convert(frame);
 
             if (bitmapSource != null)
             {
-                _previewImage.Source = bitmapSource;
+                // Update preview on UI thread
+                if (_previewImage.Dispatcher.CheckAccess())
+                {
+                    _previewImage.Source = bitmapSource;
+                }
+                else
+                {
+                    _previewImage.Dispatcher.InvokeAsync(() =>
+                    {
+                        _previewImage.Source = bitmapSource;
+                    });
+                }
             }
         }
     }

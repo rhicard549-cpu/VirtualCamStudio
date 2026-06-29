@@ -31,6 +31,7 @@ namespace VirtualCamStudio.Services
         private readonly MediaController _mediaController;
         private readonly ViewportEngine _viewportEngine;
         private readonly OutputManager _outputManager;
+        private readonly Outputs.OutputManager? _newOutputManager;  // New Frame-based output system
 
         private FramingSettings _framingSettings = new();
         private CameraProfile? _activeProfile;
@@ -69,22 +70,28 @@ namespace VirtualCamStudio.Services
         /// <param name="renderLoop">The render loop for frame scheduling</param>
         /// <param name="mediaController">The media controller to get frames from</param>
         /// <param name="viewportEngine">The viewport engine for rendering</param>
-        /// <param name="outputManager">The output manager to push frames to</param>
+        /// <param name="outputManager">The legacy output manager to push frames to</param>
+        /// <param name="newOutputManager">Optional new Frame-based output manager</param>
         public RenderPipeline(
             RenderLoop renderLoop,
             MediaController mediaController,
             ViewportEngine viewportEngine,
-            OutputManager outputManager)
+            OutputManager outputManager,
+            Outputs.OutputManager? newOutputManager = null)
         {
             _renderLoop = renderLoop ?? throw new ArgumentNullException(nameof(renderLoop));
             _mediaController = mediaController ?? throw new ArgumentNullException(nameof(mediaController));
             _viewportEngine = viewportEngine ?? throw new ArgumentNullException(nameof(viewportEngine));
             _outputManager = outputManager ?? throw new ArgumentNullException(nameof(outputManager));
+            _newOutputManager = newOutputManager;
 
             // Subscribe to render loop events
+            Debug.WriteLine("[RenderPipeline] Subscribing to RenderLoop.FrameRequested event...");
             _renderLoop.FrameRequested += OnFrameRequested;
 
-            Debug.WriteLine("[RenderPipeline] Initialized.");
+            Debug.WriteLine($"[RenderPipeline] ✓ Initialized.");
+            Debug.WriteLine($"[RenderPipeline]   - Legacy OutputManager: {_outputManager.TargetCount} targets");
+            Debug.WriteLine($"[RenderPipeline]   - New OutputManager: {(_newOutputManager != null ? $"{_newOutputManager.OutputCount} targets" : "not configured")}");
         }
 
         // ============================================
@@ -175,27 +182,44 @@ namespace VirtualCamStudio.Services
         /// Handles the FrameRequested event from RenderLoop.
         /// Gets the current media frame, applies ViewportEngine, and pushes to OutputManager.
         /// </summary>
-        private void OnFrameRequested(object? sender, EventArgs e)
+        private async void OnFrameRequested(object? sender, EventArgs e)
         {
+            Debug.WriteLine("[2] RenderPipeline entered");
+
+            Mat? sourceFrame = null;
+
             try
             {
                 // Only render if we have media loaded
                 if (!_mediaController.HasMedia)
                 {
-                    return;
+                    Debug.WriteLine("[2] RenderPipeline - SKIPPED: No media loaded");
+                    return;  // Silent - no spam when no media
                 }
 
-                // Get the current frame from MediaController (no disk reload)
-                Mat? sourceFrame = _mediaController.GetCurrentFrame();
+                // Get the current frame from MediaController (returns a clone)
+                sourceFrame = _mediaController.GetCurrentFrame();
+
+                Debug.WriteLine($"[3] MediaController returned frame - null: {sourceFrame == null}, width: {sourceFrame?.Width ?? 0}, height: {sourceFrame?.Height ?? 0}");
 
                 if (sourceFrame == null || sourceFrame.Empty())
                 {
+                    Debug.WriteLine("[RenderPipeline.OnFrameRequested] ⚠️ Source frame is null/empty");
                     return;
                 }
+
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] Source frame: {sourceFrame.Width}x{sourceFrame.Height}");
 
                 // Get canvas dimensions from active profile
                 int canvasWidth = _activeProfile?.DisplayWidth ?? 1080;
                 int canvasHeight = _activeProfile?.DisplayHeight ?? 1920;
+
+                if (_activeProfile == null)
+                {
+                    Debug.WriteLine("[RenderPipeline.OnFrameRequested] ⚠️ No active profile - using defaults");
+                }
+
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] Rendering to canvas: {canvasWidth}x{canvasHeight}");
 
                 // Render through ViewportEngine (single source of rendering logic)
                 Frame renderedFrame = _viewportEngine.Render(
@@ -204,15 +228,61 @@ namespace VirtualCamStudio.Services
                     canvasHeight,
                     _framingSettings);
 
-                // Push to all output targets (preview, virtual camera, OBS, etc.)
+                Debug.WriteLine($"[4] Viewport render finished - width: {renderedFrame.Width}, height: {renderedFrame.Height}");
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] ✓ Frame rendered");
+
+                // DEBUG: Save rendered frame to disk for inspection
+                try
+                {
+                    string debugPath = @"C:\Temp\render_debug.png";
+                    System.IO.Directory.CreateDirectory(@"C:\Temp");
+
+                    if (renderedFrame != null && renderedFrame.IsValid && renderedFrame.Image != null && !renderedFrame.Image.Empty())
+                    {
+                        Cv2.ImWrite(debugPath, renderedFrame.Image);
+                        Debug.WriteLine($"[RenderPipeline] 🔍 DEBUG: Saved rendered frame to {debugPath}");
+                        Debug.WriteLine($"[RenderPipeline] 🔍 Frame info: {renderedFrame.Width}x{renderedFrame.Height}, channels: {renderedFrame.Image.Channels()}");
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[RenderPipeline] ❌ DEBUG: Cannot save - rendered frame is invalid or empty");
+                    }
+                }
+                catch (Exception debugEx)
+                {
+                    Debug.WriteLine($"[RenderPipeline] ❌ DEBUG: Failed to save debug frame: {debugEx.Message}");
+                }
+
+                // Push to legacy output manager (preview, virtual camera, OBS, etc.)
+                Debug.WriteLine($"[5] Legacy OutputManager - about to push frame ({_outputManager.TargetCount} targets)");
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] Pushing to legacy OutputManager ({_outputManager.TargetCount} targets)...");
                 _outputManager.PushFrame(renderedFrame);
 
-                // Clean up rendered frame
+                // Push to new output manager if available (MUST await before disposing frame!)
+                if (_newOutputManager != null)
+                {
+                    Debug.WriteLine($"[6] New OutputManager - about to send frame ({_newOutputManager.OutputCount} outputs)");
+                    Debug.WriteLine($"[RenderPipeline.OnFrameRequested] Sending to new OutputManager ({_newOutputManager.OutputCount} outputs)...");
+                    await _newOutputManager.SendFrameAsync(renderedFrame);
+                    Debug.WriteLine($"[RenderPipeline.OnFrameRequested] ✓ New OutputManager completed");
+                }
+                else
+                {
+                    Debug.WriteLine($"[6] New OutputManager - SKIPPED: Not configured");
+                }
+
+                // Clean up rendered frame (AFTER all async operations complete)
                 renderedFrame.Dispose();
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] ✓ Frame disposed");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderPipeline] Error rendering frame: {ex.Message}");
+                Debug.WriteLine($"[RenderPipeline.OnFrameRequested] ❌ ERROR: {ex.Message}\n{ex.StackTrace}");
+            }
+            finally
+            {
+                // Always dispose the source frame clone
+                sourceFrame?.Dispose();
             }
         }
 

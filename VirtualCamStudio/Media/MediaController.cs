@@ -18,6 +18,7 @@ namespace VirtualCamStudio.Media
         private readonly MediaLoader _mediaLoader = new();
         private MediaItem? _currentMedia;
         private Mat? _currentFrame;
+        private readonly object _frameLock = new object();
 
         // ============================================
         // Events
@@ -108,7 +109,10 @@ namespace VirtualCamStudio.Media
                         return false;
                     }
 
-                    _currentFrame = frame;
+                    lock (_frameLock)
+                    {
+                        _currentFrame = frame;
+                    }
                 }
                 else if (mediaItem.IsVideo)
                 {
@@ -145,11 +149,14 @@ namespace VirtualCamStudio.Media
 
                     _currentMedia = null;
 
-                    // Dispose image frame if we own it
-                    if (_currentFrame != null)
+                    lock (_frameLock)
                     {
-                        _currentFrame.Dispose();
-                        _currentFrame = null;
+                        // Dispose image frame if we own it
+                        if (_currentFrame != null)
+                        {
+                            _currentFrame.Dispose();
+                            _currentFrame = null;
+                        }
                     }
 
                     // Notify subscribers
@@ -165,15 +172,63 @@ namespace VirtualCamStudio.Media
         }
 
         /// <summary>
-        /// Gets the current frame for images.
-        /// For videos, this returns null (use PlaybackEngine instead).
-        /// The returned Mat is owned by the MediaController - do not dispose it.
-        /// Clone the Mat if you need to keep it beyond the current operation.
+        /// Gets the current frame for images and videos.
+        /// Returns a clone of the internal frame to prevent cross-thread access issues.
+        /// The caller is responsible for disposing the returned Mat.
         /// </summary>
-        /// <returns>The current image frame, or null if no image is loaded</returns>
+        /// <returns>A clone of the current frame, or null if no media is loaded</returns>
         public Mat? GetCurrentFrame()
         {
-            return _currentFrame;
+            lock (_frameLock)
+            {
+                if (_currentFrame == null)
+                    return null;
+
+                try
+                {
+                    // Return a clone to prevent cross-thread access issues
+                    // The render pipeline will dispose this clone after rendering
+                    return _currentFrame.Clone();
+                }
+                catch
+                {
+                    // If cloning fails (e.g., frame was disposed during clone), return null
+                    return null;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Updates the current frame for video playback.
+        /// This should be called by PlaybackEngine when a new video frame is decoded.
+        /// The MediaController takes ownership of the frame and will dispose the previous one.
+        /// </summary>
+        /// <param name="frame">The new video frame. Will be cloned internally.</param>
+        public void UpdateVideoFrame(Mat frame)
+        {
+            if (frame == null || frame.Empty())
+                return;
+
+            lock (_frameLock)
+            {
+                // Dispose the previous frame
+                if (_currentFrame != null)
+                {
+                    _currentFrame.Dispose();
+                    _currentFrame = null;
+                }
+
+                try
+                {
+                    // Clone and store the new frame
+                    _currentFrame = frame.Clone();
+                }
+                catch
+                {
+                    // If cloning fails, leave _currentFrame as null
+                    _currentFrame = null;
+                }
+            }
         }
 
         // ============================================
