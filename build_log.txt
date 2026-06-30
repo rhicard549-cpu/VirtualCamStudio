@@ -1,0 +1,14 @@
+Build started at 2:26 AM...
+NuGet package restore failed. Please see Error List window for detailed warnings and errors.
+Error occurred while restoring NuGet packages: The operation failed as details for project VirtualCamCamera could not be loaded.
+Time Elapsed: 00:00:00.0562542
+========== Finished ==========
+
+
+1>------ Build started: Project: VirtualCamStudio, Configuration: Debug Any CPU ------
+2>------ Build started: Project: VirtualCamCamera, Configuration: Debug Any CPU ------
+1>  VirtualCamStudio -> D:\Projects\VirtualCamStudio\VirtualCamStudio\bin\Debug\net8.0-windows\VirtualCamStudio.dll
+2>  VirtualCamCamera -> D:\Projects\VirtualCamStudio\VirtualCamCamera\bin\Debug\net8.0-windows10.0.22621.0\win-x64\VirtualCamCamera.dll
+========== Build: 2 succeeded, 0 failed, 0 up-to-date, 0 skipped ==========
+========== Build completed at 2:26 AM and took 02.398 seconds ==========
+

@@ -36,7 +36,6 @@ namespace VirtualCamStudio.Services
         {
             if (frame == null || !frame.IsValid)
             {
-                Debug.WriteLine("[VirtualCamera] Received invalid frame, skipping.");
                 return;
             }
 
@@ -48,10 +47,6 @@ namespace VirtualCamStudio.Services
             }
 
             // Log frame information
-            Debug.WriteLine($"[VirtualCamera] Frame #{currentCount}: " +
-                          $"Size={frame.Width}x{frame.Height}, " +
-                          $"Timestamp={frame.Timestamp:HH:mm:ss.fff}, " +
-                          $"Format={frame.PixelFormat}");
         }
 
         /// <summary>
@@ -64,7 +59,6 @@ namespace VirtualCamStudio.Services
             {
                 _frameCount = 0;
             }
-            Debug.WriteLine("[VirtualCamera] Stats reset.");
         }
     }
 }

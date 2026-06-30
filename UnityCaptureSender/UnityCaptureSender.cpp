@@ -32,6 +32,20 @@ constexpr int FRAME_DELAY_MS = 1000 / TARGET_FPS;
 // =============================================================================
 
 /// <summary>
+/// Fills the frame buffer with green screen (chroma key green: R=0, G=177, B=64, A=255)
+/// </summary>
+void FillGreenScreen(uint8_t* buffer)
+{
+	for (int i = 0; i < FRAME_WIDTH * FRAME_HEIGHT; i++)
+	{
+		buffer[i * 4 + 0] = 0;     // R
+		buffer[i * 4 + 1] = 177;   // G (chroma key green)
+		buffer[i * 4 + 2] = 64;    // B
+		buffer[i * 4 + 3] = 255;   // A
+	}
+}
+
+/// <summary>
 /// Fills the frame buffer with solid blue background (R=0, G=0, B=255, A=255)
 /// </summary>
 void FillBlueBackground(uint8_t* buffer)
@@ -125,7 +139,7 @@ int main()
 	cout << "Configuration:\n";
 	cout << "  Resolution: " << FRAME_WIDTH << "x" << FRAME_HEIGHT << "\n";
 	cout << "  Frame Rate: " << TARGET_FPS << " FPS\n";
-	cout << "  Fallback: Blue diagnostic frame\n\n";
+	cout << "  Fallback: Green screen (until Studio connects)\n\n";
 	std::cout << "[DEBUG] Header printed\n" << std::flush;
 
 	// Initialize FrameIPC for receiving from VirtualCamStudio
@@ -194,21 +208,17 @@ int main()
 			0  // Non-blocking
 		);
 
-		// If no IPC frame, generate diagnostic frame as fallback
+		// If no IPC frame, generate green screen as fallback
 		if (!ipcFrameReceived)
 		{
 			diagnosticFramesUsed++;
 
-			// Generate diagnostic frame
-			FillBlueBackground(frameBuffer);
+			// Generate green screen frame (no Studio connection yet)
+			FillGreenScreen(frameBuffer);
 
-			// Render text overlay
-			wchar_t mainText[] = L"VirtualCam Studio";
-			wchar_t frameText[64];
-			swprintf_s(frameText, L"Frame #%d (Diagnostic)", frameNumber);
-			RenderText(frameBuffer, mainText, frameText);
-
-			// Convert ARGB to RGBA
+			// No text overlay - just pure green screen
+			// Convert ARGB to RGBA (though green screen is already in correct format)
+			// This is a no-op but keeps the code structure consistent
 			ConvertARGBtoRGBA(frameBuffer);
 
 			// Use default dimensions for diagnostic frame

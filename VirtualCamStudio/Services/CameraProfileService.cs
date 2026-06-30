@@ -70,7 +70,6 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading profiles: {ex.Message}");
             }
 
             return profiles;
@@ -98,7 +97,6 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error saving profile: {ex.Message}");
                 return false;
             }
         }
@@ -128,7 +126,6 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error deleting profile: {ex.Message}");
                 return false;
             }
         }
@@ -155,7 +152,6 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error getting profile: {ex.Message}");
             }
 
             return null;
@@ -173,7 +169,6 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error loading profile from file {filePath}: {ex.Message}");
                 return null;
             }
         }

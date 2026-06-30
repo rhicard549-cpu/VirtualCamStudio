@@ -1,4 +1,4 @@
-﻿using System.Configuration;
+using System.Configuration;
 using System.Data;
 using System.Windows;
 using System.Windows.Threading;
@@ -141,11 +141,9 @@ namespace VirtualCamStudio
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 File.AppendAllText(_logPath, $"[{timestamp}] {message}\n");
-                System.Diagnostics.Debug.WriteLine($"[{timestamp}] {message}");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"LOGGING FAILED: {ex.Message}");
             }
         }
     }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Configuration;
@@ -40,6 +40,12 @@ namespace VirtualCamStudio
         private readonly VirtualCameraService _virtualCamera = new();
         private Outputs.UnityCaptureOutput? _unityCaptureOutput;  // UnityCapture IPC output
 
+        // Background sender process
+        private readonly Services.SenderProcessManager _senderProcess = new();
+
+        // Audio playback
+        private readonly Services.AudioPlayerService _audioPlayer = new();
+
         // Rendering infrastructure (centralized via RenderPipeline)
         private readonly RenderLoop _renderLoop = new();
         private readonly Media.MediaController _mediaController = new();
@@ -76,29 +82,21 @@ namespace VirtualCamStudio
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Constructor started");
 
                 InitializeComponent();
-                System.Diagnostics.Debug.WriteLine("[MainWindow] InitializeComponent completed");
 
                 MediaListBox.ItemsSource = MediaItems;
-                System.Diagnostics.Debug.WriteLine("[MainWindow] MediaListBox bound");
 
                 // Register preview output (new Outputs system)
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Creating PreviewOutput for new OutputManager...");
                 var previewOutput = new Outputs.PreviewOutput(PreviewImage);
                 _outputManager.Register(previewOutput);
-                System.Diagnostics.Debug.WriteLine($"[MainWindow] ✓ Preview output registered to new OutputManager (count: {_outputManager.OutputCount})");
 
                 // Register legacy outputs for compatibility (old Services system)
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Registering legacy outputs...");
                 var legacyPreviewTarget = new Services.PreviewOutputTarget(PreviewImage);
                 _legacyOutputManager.RegisterTarget(legacyPreviewTarget);
                 _legacyOutputManager.RegisterTarget(_virtualCamera);
-                System.Diagnostics.Debug.WriteLine($"[MainWindow] ✓ Legacy outputs registered (count: {_legacyOutputManager.TargetCount})");
 
                 // Initialize RenderPipeline (centralized rendering)
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Creating RenderPipeline...");
                 _renderPipeline = new RenderPipeline(
                     _renderLoop,
                     _mediaController,
@@ -108,22 +106,16 @@ namespace VirtualCamStudio
 
                 // Share framing settings reference
                 // The render pipeline will read from the shared _framingSettings
-                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline initialized");
 
                 // Register keyboard shortcuts
                 KeyDown += MainWindow_KeyDown;
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Keyboard shortcuts registered");
 
                 // Register preview size changed handler for safe area overlay
                 PreviewGrid.SizeChanged += PreviewGrid_SizeChanged;
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Size changed handler registered");
-
-                System.Diagnostics.Debug.WriteLine("[MainWindow] Constructor completed successfully");
             }
             catch (Exception ex)
             {
                 string error = $"MainWindow Constructor Error: {ex.Message}\n\nStack Trace:\n{ex.StackTrace}";
-                System.Diagnostics.Debug.WriteLine(error);
 
                 // Write to desktop log
                 try
@@ -145,26 +137,55 @@ namespace VirtualCamStudio
             }
         }
 
-        private void Window_Loaded(object sender, RoutedEventArgs e)
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LoadAndPopulateCameraProfiles();
+
+            // Populate audio devices
+            PopulateAudioDevices();
+
+            // Start the background sender process asynchronously
+            UnityCaptureSenderStatusText.Text = "Sender: Starting...";
+            UnityCaptureSenderStatusText.Foreground = System.Windows.Media.Brushes.Gray;
+
+            await System.Threading.Tasks.Task.Run(() =>
+            {
+                bool senderStarted = _senderProcess.Start();
+                Dispatcher.Invoke(() =>
+                {
+                    if (senderStarted)
+                    {
+                        UnityCaptureSenderStatusText.Text = "Sender: Running";
+                        UnityCaptureSenderStatusText.Foreground = System.Windows.Media.Brushes.Green;
+                    }
+                    else
+                    {
+                        UnityCaptureSenderStatusText.Text = "Sender: Failed to start";
+                        UnityCaptureSenderStatusText.Foreground = System.Windows.Media.Brushes.Red;
+                    }
+                });
+            });
 
             // Start the render pipeline
             if (_renderPipeline != null)
             {
                 _renderPipeline.Start();
-                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline started");
             }
         }
 
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Stop the background sender process
+            _senderProcess?.Stop();
+
+            // Stop audio playback
+            _audioPlayer?.Dispose();
+
             // Stop the render pipeline
             if (_renderPipeline != null)
             {
                 _renderPipeline.Stop();
                 _renderPipeline.Dispose();
-                System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline stopped");
             }
 
             // Dispose UnityCapture output
@@ -173,7 +194,6 @@ namespace VirtualCamStudio
                 _outputManager.Unregister(_unityCaptureOutput);
                 _unityCaptureOutput.Dispose();
                 _unityCaptureOutput = null;
-                System.Diagnostics.Debug.WriteLine("[MainWindow] UnityCapture output disposed");
             }
 
             // Stop video playback
@@ -185,6 +205,9 @@ namespace VirtualCamStudio
 
             // Dispose video player
             _videoPlayer?.Dispose();
+
+            // Dispose sender process manager
+            _senderProcess?.Dispose();
         }
 
         /// <summary>
@@ -341,7 +364,6 @@ namespace VirtualCamStudio
                 {
                     AddMediaToLibrary(file);
                     anyAdded = true;
-                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Image detected: {file}");
                 }
                 // Supported video formats
                 else if (ext == ".mp4" ||
@@ -351,11 +373,10 @@ namespace VirtualCamStudio
                 {
                     AddMediaToLibrary(file);
                     anyAdded = true;
-                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Video detected: {file}");
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Drag-Drop] Unsupported file type: {file} ({ext})");
+                    // Unsupported file type - skip
                 }
             }
 
@@ -417,7 +438,6 @@ namespace VirtualCamStudio
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CreateThumbnail] Error: {ex.Message}");
                 return null;
             }
         }
@@ -454,7 +474,6 @@ namespace VirtualCamStudio
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CreateImageThumbnail] Error: {ex.Message}");
                 return null;
             }
         }
@@ -471,7 +490,6 @@ namespace VirtualCamStudio
 
                 if (!videoPlayer.Open(filePath))
                 {
-                    System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Failed to open video: {filePath}");
                     return null;
                 }
 
@@ -497,20 +515,17 @@ namespace VirtualCamStudio
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Error converting frame: {ex.Message}");
                         frame.Dispose();
                         return null;
                     }
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Failed to read first frame: {filePath}");
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CreateVideoThumbnail] Error: {ex.Message}");
                 return null;
             }
             finally
@@ -541,9 +556,6 @@ namespace VirtualCamStudio
 
         private void LoadImageFile(string path)
         {
-            System.Diagnostics.Debug.WriteLine($"========================================");
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] File detected: {path}");
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Media type: IMAGE");
 
             // Stop any existing video playback
             StopVideoPlayback();
@@ -556,15 +568,11 @@ namespace VirtualCamStudio
             _currentMediaFrame = null;
 
             // Load image via MediaController
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Loading image via MediaController...");
             if (!_mediaController.Load(path))
             {
-                System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ❌ Failed to load image");
                 StatusText.Text = "Failed to load image";
                 return;
             }
-
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded successfully");
 
             // Reset framing settings (via RenderPipeline)
             if (_renderPipeline != null)
@@ -575,119 +583,79 @@ namespace VirtualCamStudio
             // Update pan slider ranges for new media
             UpdatePanSliderRanges();
 
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] ✓ Image loaded and will be rendered by RenderLoop");
-
             // Disable video playback controls
             UpdatePlaybackControlsState(false);
-            System.Diagnostics.Debug.WriteLine($"[LoadImageFile] Playback controls disabled");
-            System.Diagnostics.Debug.WriteLine($"========================================");
         }
 
         private void LoadVideo(string path)
         {
-            System.Diagnostics.Debug.WriteLine($"========================================");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] File detected: {path}");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Media type: VIDEO");
 
             // Stop any existing video playback
             StopVideoPlayback();
 
             // Load video metadata via MediaController first
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Loading video metadata via MediaController...");
             if (!_mediaController.Load(path))
             {
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ MediaController failed to load video metadata");
                 StatusText.Text = "Failed to load video metadata";
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ Video metadata loaded via MediaController");
-
             // Open the video
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Opening video with VideoPlayer...");
             if (!_videoPlayer.Open(path))
             {
                 string errorMsg = $"Failed to open video: {Path.GetFileName(path)}";
                 StatusText.Text = errorMsg;
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ Open FAILED: {errorMsg}");
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] Possible reasons:");
-                System.Diagnostics.Debug.WriteLine($"  - File is corrupted");
-                System.Diagnostics.Debug.WriteLine($"  - Codec not supported");
-                System.Diagnostics.Debug.WriteLine($"  - File is in use by another application");
-                System.Diagnostics.Debug.WriteLine($"========================================");
 
                 MessageBox.Show(
-                    $"Failed to open video file:\n\n{Path.GetFileName(path)}\n\nPossible reasons:\n• File is corrupted\n• Codec not supported\n• File is in use",
+                    $"Failed to open video file:\n\n{Path.GetFileName(path)}\n\nPossible reasons:\n� File is corrupted\n� Codec not supported\n� File is in use",
                     "Video Load Error",
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
                 return;
             }
 
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ Open succeeded");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Width: {_videoPlayer.Width}");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Height: {_videoPlayer.Height}");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] FPS: {_videoPlayer.FPS:F2}");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Frame Count: {_videoPlayer.FrameCount}");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Duration: {_videoPlayer.Duration}");
-
             // Create new playback engine
             _playbackEngine = new Media.PlaybackEngine(_videoPlayer);
             _playbackEngine.FrameReady += PlaybackEngine_FrameReady;
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] PlaybackEngine created");
 
             // Display the first frame
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Decoding first frame...");
             bool firstFrameSuccess = DisplayFirstFrame();
 
             if (firstFrameSuccess)
             {
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ✓ First frame decoded and displayed successfully");
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] Preview should now show the first frame");
                 StatusText.Text = $"{Path.GetFileName(path)} (Video ready - press Play)";
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[LoadVideo] ❌ First frame decode FAILED");
                 StatusText.Text = $"Video opened but first frame failed";
             }
 
             // Enable video playback controls
             UpdatePlaybackControlsState(true);
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Playback controls enabled");
-            System.Diagnostics.Debug.WriteLine($"[LoadVideo] Video load complete - ready for playback");
-            System.Diagnostics.Debug.WriteLine($"========================================");
         }
 
         private bool DisplayFirstFrame()
         {
             if (!_videoPlayer.IsOpened)
             {
-                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ VideoPlayer not opened");
                 return false;
             }
 
             // Seek to first frame
-            System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Seeking to frame 0...");
             if (!_videoPlayer.Seek(0))
             {
-                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Seek to frame 0 failed");
                 return false;
             }
 
             // Read and store the first frame
-            System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Reading first frame...");
             if (_videoPlayer.ReadNextFrame(out Mat frame))
             {
                 try
                 {
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame read: {frame.Width}x{frame.Height}");
 
                     // Update MediaController with the first video frame
                     _mediaController.UpdateVideoFrame(frame);
                     _isVideoActive = true;
-
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ Frame stored in MediaController");
 
                     // Reset framing settings (via RenderPipeline)
                     if (_renderPipeline != null)
@@ -697,12 +665,9 @@ namespace VirtualCamStudio
 
                     // Update pan slider ranges for new media
                     UpdatePanSliderRanges();
-
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ✓ First frame ready for RenderLoop");
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Error setting up first frame: {ex.Message}");
                     frame.Dispose();
                     return false;
                 }
@@ -712,14 +677,12 @@ namespace VirtualCamStudio
                 }
 
                 // Reset to first frame for playback
-                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] Resetting to frame 0 for playback...");
                 _videoPlayer.Seek(0);
 
                 return true;
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"[DisplayFirstFrame] ❌ Failed to read first frame");
                 return false;
             }
         }
@@ -775,7 +738,6 @@ namespace VirtualCamStudio
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[PlaybackEngine_FrameReady] Error: {ex.Message}");
                 }
             });
         }
@@ -789,7 +751,6 @@ namespace VirtualCamStudio
             if (_playbackEngine != null)
             {
                 _playbackEngine.Play();
-                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Play clicked");
             }
         }
 
@@ -798,7 +759,6 @@ namespace VirtualCamStudio
             if (_playbackEngine != null)
             {
                 _playbackEngine.Pause();
-                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Pause clicked");
             }
         }
 
@@ -810,8 +770,6 @@ namespace VirtualCamStudio
 
                 // Display first frame when stopped
                 DisplayFirstFrame();
-
-                System.Diagnostics.Debug.WriteLine("[VideoPlayback] Stop clicked");
             }
         }
 
@@ -820,8 +778,97 @@ namespace VirtualCamStudio
             if (_playbackEngine != null)
             {
                 _playbackEngine.Loop = LoopCheckBox.IsChecked == true;
-                System.Diagnostics.Debug.WriteLine($"[VideoPlayback] Loop = {_playbackEngine.Loop}");
             }
+        }
+
+        // ============================================
+        // Audio Playback Control Handlers
+        // ============================================
+
+        private void PopulateAudioDevices()
+        {
+            try
+            {
+                var devices = Services.AudioPlayerService.GetAvailableDevices();
+                AudioDeviceComboBox.ItemsSource = devices;
+                AudioDeviceComboBox.DisplayMemberPath = "FriendlyName";
+                AudioDeviceComboBox.SelectedValuePath = "DeviceNumber";
+
+                // Select default device
+                if (devices.Count > 0)
+                {
+                    AudioDeviceComboBox.SelectedIndex = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Failed to load audio devices: {ex.Message}";
+            }
+        }
+
+        private void AudioDeviceComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (AudioDeviceComboBox.SelectedItem is Services.AudioDevice device)
+            {
+                _audioPlayer.SetOutputDevice(device.DeviceNumber);
+                StatusText.Text = $"Audio output: {device.Name}";
+            }
+        }
+
+        private void LoadAudioButton_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Title = "Select Audio File",
+                Filter = "Audio Files|*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac|All Files|*.*",
+                Multiselect = false
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                if (_audioPlayer.LoadAudio(openFileDialog.FileName))
+                {
+                    // Enable audio controls
+                    PlayAudioButton.IsEnabled = true;
+                    StopAudioButton.IsEnabled = true;
+                    LoopAudioCheckBox.IsEnabled = true;
+
+                    StatusText.Text = $"Audio loaded: {_audioPlayer.CurrentFileName}";
+                }
+                else
+                {
+                    MessageBox.Show(
+                        "Failed to load audio file. Make sure the file is a valid audio format.",
+                        "Audio Load Error",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void PlayAudioButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audioPlayer.Play();
+            PauseAudioButton.IsEnabled = true;
+            StatusText.Text = $"Playing: {_audioPlayer.CurrentFileName}";
+        }
+
+        private void PauseAudioButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audioPlayer.Pause();
+            StatusText.Text = $"Audio paused: {_audioPlayer.CurrentFileName}";
+        }
+
+        private void StopAudioButton_Click(object sender, RoutedEventArgs e)
+        {
+            _audioPlayer.Stop();
+            PauseAudioButton.IsEnabled = false;
+            StatusText.Text = $"Audio stopped: {_audioPlayer.CurrentFileName}";
+        }
+
+        private void LoopAudioCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            _audioPlayer.SetLoop(LoopAudioCheckBox.IsChecked == true);
         }
 
         private void MediaListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -992,7 +1039,7 @@ namespace VirtualCamStudio
 
             _renderPipeline.FramingSettings.Rotation = RotationSlider.Value;
 
-            RotationValueText.Text = $"{RotationSlider.Value:0}°";
+            RotationValueText.Text = $"{RotationSlider.Value:0}�";
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -1408,6 +1455,17 @@ namespace VirtualCamStudio
         {
             try
             {
+                // Check if media is loaded
+                if (!_mediaController.HasMedia)
+                {
+                    StatusText.Text = "Please load an image or video first!";
+                    MessageBox.Show("Please load an image or video before starting Unity Video Capture.",
+                                    "No Media Loaded",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Warning);
+                    return;
+                }
+
                 StatusText.Text = "Starting Unity Video Capture output...";
                 StartUnityCaptureButton.IsEnabled = false;
 
@@ -1421,8 +1479,6 @@ namespace VirtualCamStudio
                 // Update status indicator
                 UnityCaptureStatusIndicator.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.LimeGreen);
                 UnityCaptureStatusText.Text = "Running";
-
-                Debug.WriteLine("[MainWindow] Unity Video Capture output started");
             }
             catch (Exception ex)
             {
@@ -1458,8 +1514,6 @@ namespace VirtualCamStudio
                 // Update status indicator
                 UnityCaptureStatusIndicator.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
                 UnityCaptureStatusText.Text = "Stopped";
-
-                Debug.WriteLine("[MainWindow] Unity Video Capture output stopped");
             }
             catch (Exception ex)
             {

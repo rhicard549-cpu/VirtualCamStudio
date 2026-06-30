@@ -77,7 +77,6 @@ namespace VirtualCamStudio.Media
         {
             try
             {
-                Debug.WriteLine($"[MediaController] Loading media: {filePath}");
 
                 // Unload any existing media first
                 Unload();
@@ -87,7 +86,6 @@ namespace VirtualCamStudio.Media
 
                 if (mediaItem == null)
                 {
-                    Debug.WriteLine($"[MediaController] Failed to load media: {filePath}");
                     return false;
                 }
 
@@ -99,12 +97,10 @@ namespace VirtualCamStudio.Media
 
                 if (mediaItem.IsImage)
                 {
-                    Debug.WriteLine($"[MediaController] Loading image data for: {mediaItem.FileName}");
                     frame = LoadImageData(filePath);
 
                     if (frame == null || frame.Empty())
                     {
-                        Debug.WriteLine($"[MediaController] Failed to load image data.");
                         _currentMedia = null;
                         return false;
                     }
@@ -116,20 +112,17 @@ namespace VirtualCamStudio.Media
                 }
                 else if (mediaItem.IsVideo)
                 {
-                    Debug.WriteLine($"[MediaController] Video metadata loaded: {mediaItem.FileName}");
                     // Video frames will be provided by PlaybackEngine
                     // We don't load a static frame here
                 }
 
                 // Notify subscribers
-                Debug.WriteLine($"[MediaController] Media loaded successfully: {mediaItem}");
                 MediaLoaded?.Invoke(this, new MediaLoadedEventArgs(mediaItem, frame));
 
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaController] Error loading media: {ex.Message}");
                 Unload();
                 return false;
             }
@@ -145,7 +138,6 @@ namespace VirtualCamStudio.Media
             {
                 if (_currentMedia != null)
                 {
-                    Debug.WriteLine($"[MediaController] Unloading media: {_currentMedia.FileName}");
 
                     _currentMedia = null;
 
@@ -161,13 +153,10 @@ namespace VirtualCamStudio.Media
 
                     // Notify subscribers
                     MediaUnloaded?.Invoke(this, EventArgs.Empty);
-
-                    Debug.WriteLine("[MediaController] Media unloaded.");
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaController] Error unloading media: {ex.Message}");
             }
         }
 
@@ -183,13 +172,11 @@ namespace VirtualCamStudio.Media
             {
                 if (_currentFrame == null)
                 {
-                    Debug.WriteLine("[MediaController.GetCurrentFrame] ⚠️ _currentFrame is NULL");
                     return null;
                 }
 
                 if (_currentFrame.Empty())
                 {
-                    Debug.WriteLine("[MediaController.GetCurrentFrame] ⚠️ _currentFrame is EMPTY");
                     return null;
                 }
 
@@ -199,20 +186,11 @@ namespace VirtualCamStudio.Media
                     // The render pipeline will dispose this clone after rendering
                     Mat cloned = _currentFrame.Clone();
 
-                    // DIAGNOSTIC: Check pixel data
-                    unsafe
-                    {
-                        byte* ptr = (byte*)cloned.DataPointer;
-                        int channels = cloned.Channels();
-                        Debug.WriteLine($"[MediaController.GetCurrentFrame] Returning frame: {cloned.Width}x{cloned.Height}, Channels: {channels}, First pixel: ({ptr[0]},{ptr[1]},{ptr[2]},{(channels > 3 ? ptr[3] : 255)})");
-                    }
-
                     return cloned;
                 }
                 catch (Exception ex)
                 {
                     // If cloning fails (e.g., frame was disposed during clone), return null
-                    Debug.WriteLine($"[MediaController.GetCurrentFrame] ❌ Clone failed: {ex.Message}");
                     return null;
                 }
             }
@@ -268,30 +246,15 @@ namespace VirtualCamStudio.Media
 
                 if (image == null || image.Empty())
                 {
-                    Debug.WriteLine($"[MediaController.LoadImageData] Failed to load image data from: {filePath}");
                     return null;
                 }
 
                 Debug.WriteLine($"[MediaController.LoadImageData] Image data loaded: {image.Width}x{image.Height}, Channels: {image.Channels()}");
 
-                // DIAGNOSTIC: Check pixel data immediately after load
-                unsafe
-                {
-                    byte* ptr = (byte*)image.DataPointer;
-                    int channels = image.Channels();
-                    Debug.WriteLine($"[MediaController.LoadImageData] 🔍 First pixel after load: ({ptr[0]},{ptr[1]},{ptr[2]},{(channels > 3 ? ptr[3] : 255)})");
-
-                    // Check center pixel
-                    int centerOffset = ((image.Height / 2) * image.Width + (image.Width / 2)) * channels;
-                    byte* centerPtr = ptr + centerOffset;
-                    Debug.WriteLine($"[MediaController.LoadImageData] 🔍 Center pixel after load: ({centerPtr[0]},{centerPtr[1]},{centerPtr[2]},{(channels > 3 ? centerPtr[3] : 255)})");
-                }
-
                 return image;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaController.LoadImageData] Error loading image data: {ex.Message}");
                 return null;
             }
         }

@@ -1,0 +1,77 @@
+=================================================================
+CRITICAL ISSUE FOUND: BLACK FRAMES (0,0,0,255)
+=================================================================
+
+The diagnostic shows ALL PIXELS are BLACK (0,0,0,255).
+This means NO ACTUAL IMAGE DATA is being sent from the Studio.
+
+ROOT CAUSE:
+The RenderPipeline skips rendering when MediaController.HasMedia == false.
+This happens if you start Unity Capture BEFORE loading an image.
+
+=================================================================
+CORRECT TEST PROCEDURE (VERY IMPORTANT!):
+=================================================================
+
+1. Start UnityCaptureSender.exe
+   - You should see: "[UnityCaptureSender] Starting up..."
+   - Wait for: "[SharedImageMemory] Initialization successful"
+
+2. Start VirtualCamStudio.exe
+   - Window opens
+
+3. LOAD AN IMAGE FIRST!! (THIS IS CRITICAL)
+   - Click "Add Image" button
+   - Select a colorful test image (JPG, PNG, etc.)
+   - WAIT for the preview to show the image
+
+4. THEN start Unity Capture
+   - Click "Start Unity Capture" button
+   - Check sender console for connection message
+
+5. Open CloudPhone or webcamtests.com
+   - Select "Unity Video Capture"
+   - Should now show YOUR IMAGE with correct colors
+
+=================================================================
+WHY YOU GOT BLACK FRAMES:
+=================================================================
+
+If you clicked "Start Unity Capture" BEFORE loading an image:
+- MediaController.HasMedia = false
+- RenderPipeline returns early (no frames sent)
+- Or empty/default frames get sent
+- Result: All black pixels (0,0,0,255)
+
+The render loop only sends frames when media is loaded!
+
+=================================================================
+NEW DIAGNOSTIC ADDED:
+=================================================================
+
+I added logging to show what frame data UnityCaptureOutput receives:
+- Check Visual Studio Output window (Debug)
+- Look for: "[UnityCaptureOutput.SendFrameAsync] Received frame..."
+- It will show if frames are null, invalid, or actual dimensions
+
+=================================================================
+PLEASE TEST AGAIN WITH CORRECT ORDER:
+=================================================================
+
+1. Stop any running processes
+2. Start sender
+3. Start Studio
+4. LOAD IMAGE FIRST ← CRITICAL STEP
+5. THEN start Unity Capture
+6. Check CloudPhone
+
+Expected result with correct order:
+- Sender logs show non-zero pixel values matching your image
+- CloudPhone shows your actual image with correct colors
+
+If you still get black frames after loading an image:
+- Copy the Studio Debug output
+- It will show if frames are being rendered/sent
+- We can diagnose further from there
+
+=================================================================

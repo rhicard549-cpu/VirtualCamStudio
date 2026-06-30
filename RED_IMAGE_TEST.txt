@@ -1,0 +1,122 @@
+====================================================================
+BRIGHT RED IMAGE TEST - Detailed Pixel Tracking
+====================================================================
+
+The sender now logs MULTIPLE sample pixels at both RECEIVE and SEND stages.
+This will show us exactly what's happening to your bright red image.
+
+====================================================================
+TEST PROCEDURE:
+====================================================================
+
+Step 1: Start UnityCaptureSender
+---------------------------------
+cd D:\Projects\VirtualCamStudio\UnityCaptureSender
+.\UnityCaptureSender.exe
+
+Leave this console window OPEN and VISIBLE.
+
+Step 2: Start VirtualCamStudio from Visual Studio
+--------------------------------------------------
+Press F5 to start with debugger.
+
+Step 3: Load a BRIGHT RED Image
+--------------------------------
+In VirtualCamStudio:
+  1. Click "Add Image"
+  2. Select a SOLID BRIGHT RED image
+	 (If you don't have one, create a red image in Paint:
+	  - Open Paint
+	  - Fill with bright red color
+	  - Save as red_test.png)
+  3. Wait for preview to show the red image
+
+Step 4: Start Unity Capture
+----------------------------
+Click "Start Unity Capture" button
+
+Step 5: Watch Sender Console Output
+------------------------------------
+Every 30 frames you'll see detailed diagnostics like:
+
+========== IPC RECEIVE DIAGNOSTIC (Frame 30) ==========
+[RECV] Frame dimensions: 1080x1920
+[RECV] Stride: 1080, Data size: 8294400 bytes
+[RECV] Pixel format: 0 (0=RGBA)
+[RECV] Pixel [0,0] (top-left):     RGBA=(?,?,?,255)
+[RECV] Pixel [center]:            RGBA=(?,?,?,255)
+[RECV] Pixel [100,100]:           RGBA=(?,?,?,255)
+[RECV] Pixel [W-100,H-100]:       RGBA=(?,?,?,255)
+=========================================================
+
+========== SENDER PIXEL DIAGNOSTIC (Frame 30) ==========
+[SEND] Frame dimensions: 1080x1920
+[SEND] Stride: 1080, Data size: 8294400 bytes
+[SEND] Pixel [0,0] (top-left):     RGBA=(?,?,?,255)
+[SEND] Pixel [center]:            RGBA=(?,?,?,255)
+[SEND] Pixel [100,100]:           RGBA=(?,?,?,255)
+[SEND] Pixel [W-100,H-100]:       RGBA=(?,?,?,255)
+[SEND] Format being sent to UnityCapture: FORMAT_UINT8 (expecting RGBA byte order)
+=========================================================
+
+====================================================================
+EXPECTED VALUES FOR BRIGHT RED IMAGE:
+====================================================================
+
+For a SOLID BRIGHT RED image, you should see:
+
+RGBA = (255, 0, 0, 255)
+  ↑    ↑   ↑   ↑    ↑
+  R    G   B   A    Alpha
+
+If you see this pattern:
+- At [RECV] stage → Studio is sending correct red
+- At [SEND] stage → Sender is forwarding correct red
+- But CloudPhone shows wrong color → UnityCapture interpretation issue
+
+If you see different values like:
+- (0, 0, 255, 255) → Blue, channels are swapped
+- (0, 0, 0, 255) → Black, image not in that area (letterbox)
+- (255, 255, 255, 255) → White, something very wrong
+
+Remember: [0,0] might be in letterbox area (black bars).
+The CENTER pixel is most important for bright red test.
+
+====================================================================
+WHAT TO REPORT:
+====================================================================
+
+1. Copy the RECEIVE diagnostic output (all 4 pixel samples)
+2. Copy the SEND diagnostic output (all 4 pixel samples)
+3. What does CloudPhone/webcamtests show?
+   - Black screen?
+   - Red image (correct)?
+   - Different color (blue/green/purple)?
+   - Something else?
+
+4. What does C:\Temp\render_debug.png look like?
+   - Open this file - is it red?
+
+5. What does the Studio preview show?
+   - Is the preview red?
+
+====================================================================
+POSSIBLE OUTCOMES:
+====================================================================
+
+Scenario A: All pixels show (255,0,0,255) everywhere, CloudPhone shows red
+  → SUCCESS! Pipeline is working! ✓
+
+Scenario B: Pixels show (255,0,0,255) at RECV and SEND, CloudPhone shows different color
+  → UnityCapture driver is interpreting the format differently
+  → Need to check UnityCapture's actual expectations
+
+Scenario C: Pixels show (0,0,255,255) (blue instead of red)
+  → Channels are swapped somewhere
+  → Need to check our BGRA→RGBA conversion
+
+Scenario D: Center pixel is red, [0,0] is black
+  → This is NORMAL if you have letterbox bars
+  → Check if CloudPhone shows red in the center with black bars
+
+====================================================================

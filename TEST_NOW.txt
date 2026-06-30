@@ -1,0 +1,34 @@
+# QUICK TEST - DO THIS NOW
+
+## Current Status
+- UnityCaptureSender is running (PID: 9436)
+- VirtualCamStudio is running (PID: 28884)
+- FIX APPLIED: BGRA to RGBA conversion now active
+
+## TEST STEPS
+
+### 1. In VirtualCamStudio Window:
+   - Click "Start Unity Capture"
+   - Click "Add Image" 
+   - Select a colorful test image
+   - Observe preview
+
+### 2. Check Sender Console For:
+   [FrameIPC] VirtualCamStudio connected.
+   [FrameIPC] Received frame 30: 1920x1080, first pixel: (R,G,B,A)
+   [DEBUG] Sending frame 30 to UnityCapture: 1920x1080, first pixel: (R,G,B,A)
+
+### 3. Open CloudPhone or webcamtests.com:
+   - Select "Unity Video Capture"
+   - OBSERVE: Should show YOUR IMAGE with CORRECT COLORS
+
+## SUCCESS = Your uploaded image appears with correct colors
+
+## If Still Wrong:
+   - Note what you see in CloudPhone
+   - Copy pixel values from sender console
+   - Report back what happened
+
+## The Fix Applied:
+   Studio now converts BGRA to RGBA before sending
+   This prevents the double color-swap bug that caused purple/wrong colors

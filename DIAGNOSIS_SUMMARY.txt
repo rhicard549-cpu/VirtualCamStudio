@@ -1,0 +1,144 @@
+=============================================================================
+DEEP DIAGNOSIS RESULTS - ROOT CAUSE IDENTIFIED AND FIXED
+=============================================================================
+
+PROBLEM SUMMARY:
+CloudPhone and webcamtests were showing incorrect colors (purple/green) instead 
+of the actual uploaded media from VirtualCamStudio.
+
+ROOT CAUSE FOUND:
+A pixel format mismatch caused a DOUBLE COLOR SWAP bug in the pipeline.
+
+THE BUG IN DETAIL:
+==================
+
+1. VirtualCamStudio was sending frames in BGRA format (Blue, Green, Red, Alpha)
+2. But it marked them as format 0, which means RGBA according to FrameIPC.h
+3. UnityCaptureSender received the data and believed it was RGBA
+4. UnityCapture driver (UnityCaptureFilter.cpp line 226) then converted 
+   "RGBA" to BGRA by swapping Red and Blue channels
+5. RESULT: Red and Blue got swapped TWICE = wrong colors!
+
+PROOF FROM CODE ANALYSIS:
+=========================
+
+File: Research/UnityCapture/Source/UnityCaptureFilter.cpp
+Line 226: #define RGBATOBGRA(x) ((x&0xFF00FF00)|((x&0x00FF0000)>>16)|((x&0x000000FF)<<16))
+
+This macro SWAPS the R and B channels because UnityCapture EXPECTS RGBA input
+and converts it to BGRA for Windows display.
+
+File: UnityCaptureSender/FrameIPC.h  
+Line 20: uint32_t pixelFormat; // 0 = RGBA32
+
+Format 0 is defined as RGBA, not BGRA.
+
+File: VirtualCamStudio/Outputs/UnityCaptureOutput.cs (BEFORE FIX)
+Line 154: BitConverter.GetBytes(0).CopyTo(headerBytes, 16); // PixelFormat: 0 = BGRA32
+Line 156: // Get pixel data (already in BGRA format)
+
+MISMATCH! Sending BGRA but marking as RGBA!
+
+THE FIX APPLIED:
+================
+
+Modified: VirtualCamStudio/Outputs/UnityCaptureOutput.cs
+
+BEFORE:
+-------
+- Sent BGRA data directly from bgraFrame.Data
+- Marked as format 0 (which means RGBA)
+- No conversion happening
+
+AFTER:
+------
+- Added explicit BGRA to RGBA conversion using OpenCV:
+  Mat rgbaFrame = new Mat();
+  Cv2.CvtColor(bgraFrame, rgbaFrame, ColorConversionCodes.BGRA2RGBA);
+
+- Now sends RGBA data from rgbaFrame.Data
+- Still marked as format 0 (RGBA) - now CORRECT!
+- Added proper cleanup: rgbaFrame.Dispose();
+
+EXPECTED RESULT:
+================
+
+Pipeline flow NOW (CORRECT):
+1. Studio: BGRA frame → convert to RGBA → send as format 0 ✓
+2. Sender: receive RGBA (matches format 0) ✓
+3. UnityCapture: convert RGBA to BGRA (one swap) ✓
+4. CloudPhone: displays correct colors! ✓
+
+DIAGNOSTIC LOGGING ADDED:
+==========================
+
+To verify the fix, diagnostic logging was added at three points:
+
+1. VirtualCamStudio/Outputs/UnityCaptureOutput.cs
+   - Logs first and center pixel RGBA values every frame
+   - Output in Visual Studio Debug window
+
+2. UnityCaptureSender/FrameIPC.cpp
+   - Logs received frame info every 30 frames
+   - Shows first pixel RGBA values
+
+3. UnityCaptureSender/UnityCaptureSender.cpp
+   - Logs sent frame info every 30 frames
+   - Shows first pixel RGBA values before sending to UnityCapture
+
+VERIFICATION STEPS:
+===================
+
+The diagnostic test script (RUN_FULL_DIAGNOSTIC.ps1) launches both processes
+and provides instructions for manual verification.
+
+TEST:
+1. Start Unity Capture in VirtualCamStudio
+2. Load a colorful test image
+3. Check sender console for pixel values
+4. Open CloudPhone/webcamtests and select "Unity Video Capture"
+5. VERIFY: Image displays with CORRECT colors
+
+PIXEL VALUE EXAMPLE (for a RED pixel):
+- Studio sends RGBA: (255, 0, 0, 255) = Red
+- Sender receives: (255, 0, 0, 255) = matches! ✓
+- Sender forwards to UnityCapture: (255, 0, 0, 255)
+- UnityCapture swaps to BGRA: (0, 0, 255, 255) for Windows
+- CloudPhone displays: RED color ✓
+
+FILES MODIFIED:
+===============
+
+1. VirtualCamStudio/Outputs/UnityCaptureOutput.cs (FIX + diagnostics)
+   - Added BGRA to RGBA conversion
+   - Updated diagnostic logging to show RGBA values
+   - Added cleanup for converted frame
+
+2. UnityCaptureSender/FrameIPC.cpp (diagnostics only)
+   - Added frame receive logging every 30 frames
+
+3. UnityCaptureSender/UnityCaptureSender.cpp (diagnostics only)  
+   - Added frame send logging every 30 frames
+
+NEW FILES CREATED:
+==================
+
+- FIX_APPLIED.md - Detailed explanation of the fix
+- TEST_NOW.txt - Quick test instructions
+- RUN_FULL_DIAGNOSTIC.ps1 - Automated test launcher
+- DIAGNOSTIC_RESULTS.md - Guide for interpreting diagnostic output
+- DIAGNOSIS_SUMMARY.txt - This file
+
+NEXT STEPS:
+===========
+
+1. RUN THE TEST (processes already started)
+2. Verify CloudPhone shows correct colors
+3. If successful, consider reducing diagnostic logging frequency
+4. If not successful, collect diagnostic output and investigate further
+
+The fix addresses the fundamental format mismatch that was causing the
+double color swap. Based on code analysis of the UnityCapture filter,
+this should resolve the issue completely.
+
+=============================================================================

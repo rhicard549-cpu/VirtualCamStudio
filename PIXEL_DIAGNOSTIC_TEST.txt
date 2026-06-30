@@ -1,0 +1,156 @@
+====================================================================
+PIXEL-LEVEL DIAGNOSTIC TEST - Find Where Black Frames Come From
+====================================================================
+
+I've added extensive pixel-level logging at EVERY stage of the pipeline:
+
+1. MediaController.LoadImageData - When image is first loaded
+2. MediaController.GetCurrentFrame - When frame is requested for rendering
+3. RenderPipeline.OnFrameRequested - After rendering
+4. UnityCaptureOutput.SendFrameAsync - Before sending to IPC
+5. UnityCaptureSender (FrameIPC) - When received over IPC
+
+This will pinpoint EXACTLY where the pixels turn black.
+
+====================================================================
+TEST PROCEDURE:
+====================================================================
+
+Step 1: Start UnityCaptureSender
+---------------------------------
+cd D:\Projects\VirtualCamStudio\UnityCaptureSender
+.\UnityCaptureSender.exe
+
+Expected output:
+  [UnityCaptureSender] Starting up...
+  [SharedImageMemory] Initialization successful
+
+Leave this window OPEN and VISIBLE.
+
+Step 2: Start VirtualCamStudio from Visual Studio
+--------------------------------------------------
+Press F5 in Visual Studio to start with debugger attached.
+
+This ensures you can see ALL Debug.WriteLine output in the Output window.
+
+Step 3: Open Visual Studio Output Window
+-----------------------------------------
+In Visual Studio:
+  - View > Output (or Ctrl+Alt+O)
+  - Set dropdown to "Debug" (NOT "Build")
+  - Clear the output (right-click > Clear All)
+
+Step 4: Load an Image
+----------------------
+In VirtualCamStudio:
+  1. Click "Add Image"
+  2. Select a COLORFUL test image (not black/white, something with reds/blues/greens)
+  3. Watch the Output window
+
+EXPECTED DEBUG OUTPUT:
+  [MediaController] Loading media: <path>
+  [MediaController.LoadImageData] Image data loaded: WxH, Channels: 3 or 4
+  [MediaController.LoadImageData] 🔍 First pixel after load: (B,G,R,A)
+  [MediaController.LoadImageData] 🔍 Center pixel after load: (B,G,R,A)
+
+CRITICAL: Are the pixel values NON-ZERO here?
+- If YES → Image loaded correctly ✓
+- If NO (0,0,0,X) → Image file itself is black OR ImageProcessor.Load failed ✗
+
+Step 5: Start Unity Capture
+----------------------------
+In VirtualCamStudio:
+  1. Click "Start Unity Capture"
+
+EXPECTED DEBUG OUTPUT:
+  [MainWindow] Unity Video Capture output started
+  [UnityCaptureOutput] Connecting to pipe...
+  [UnityCaptureOutput] Connected to sender pipe
+
+Step 6: Watch Render Loop Output
+---------------------------------
+Every frame (approx 4 per second), you should see:
+
+  [2] RenderPipeline entered
+  [3] MediaController returned frame - null: false, width: W, height: H
+  [MediaController.GetCurrentFrame] Returning frame: WxH, Channels: C, First pixel: (B,G,R,A)
+  [4] Viewport render finished - width: W, height: H
+  [RenderPipeline] 🔍 PIXEL CHECK: First pixel = (B,G,R,A), Channels: C
+  [RenderPipeline] 🔍 PIXEL CHECK: Center pixel = (B,G,R,A)
+  [RenderPipeline] 🔍 DEBUG: Saved rendered frame to C:\Temp\render_debug.png
+  [6] New OutputManager - about to send frame (1 outputs)
+  [UnityCaptureOutput.SendFrameAsync] Received frame - null: false, IsValid: true, Width: WxH
+  [UnityCaptureOutput] Frame: WxH, First pixel RGBA: (R,G,B,A)
+  [UnityCaptureOutput] Frame: Center pixel RGBA: (R,G,B,A)
+
+CRITICAL CHECKPOINTS:
+A. MediaController.GetCurrentFrame pixel values
+   - If (0,0,0,X) → Frame is black in memory, image never loaded correctly
+
+B. RenderPipeline PIXEL CHECK after rendering
+   - If (0,0,0,X) → ViewportEngine.Render is producing black output
+
+C. UnityCaptureOutput RGBA pixel values
+   - If (0,0,0,X) → Conversion or frame passing has bug
+
+D. UnityCaptureSender console (first pixel received)
+   - If (0,0,0,255) → IPC transmission OK but data is black at source
+
+Step 7: Check Saved Debug Image
+--------------------------------
+Open: C:\Temp\render_debug.png
+
+This is what RenderPipeline actually rendered BEFORE sending to outputs.
+- If this image is BLACK → Problem is in ViewportEngine or MediaController
+- If this image is CORRECT → Problem is after rendering (IPC/conversion)
+
+Step 8: Check CloudPhone
+-------------------------
+Open CloudPhone or webcamtests.com
+Select "Unity Video Capture"
+
+What do you see?
+
+====================================================================
+REPORTING RESULTS:
+====================================================================
+
+Please copy and paste the ENTIRE Debug Output window content, especially:
+
+1. The LoadImageData section (first pixel after load)
+2. The GetCurrentFrame section (pixel values when requested)
+3. The RenderPipeline PIXEL CHECK section
+4. The UnityCaptureOutput pixel values
+5. The UnityCaptureSender console output
+
+Also tell me:
+- What C:\Temp\render_debug.png looks like (black or your image?)
+- What CloudPhone shows (black or your image?)
+
+This will tell us EXACTLY where the pixels turn black.
+
+====================================================================
+POSSIBLE OUTCOMES:
+====================================================================
+
+Scenario A: Pixels are (0,0,0,X) at LoadImageData
+  → ImageProcessor.Load is failing or image file is black
+  → Check the image file itself, try a different image
+
+Scenario B: Pixels are GOOD at LoadImageData, BLACK at GetCurrentFrame
+  → Frame is being cleared or replaced between load and request
+  → Memory corruption or disposal issue
+
+Scenario C: Pixels are GOOD at GetCurrentFrame, BLACK after RenderPipeline
+  → ViewportEngine.Render is producing black output
+  → Check canvas/framing settings, viewport rendering logic
+
+Scenario D: Pixels are GOOD in Studio, BLACK at Sender
+  → IPC transmission or format conversion bug
+  → But this seems unlikely given previous logs
+
+Scenario E: Pixels are GOOD everywhere, CloudPhone shows black
+  → UnityCapture driver or CloudPhone interpretation issue
+  → Very unlikely, would be UnityCapture bug
+
+====================================================================

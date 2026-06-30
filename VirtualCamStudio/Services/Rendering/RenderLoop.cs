@@ -21,7 +21,7 @@ namespace VirtualCamStudio.Services.Rendering
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _renderTask;
 
-        private int _targetFps = 30;
+        private int _targetFps = 60;  // Increased from 30 to 60 for smoother updates
         private bool _isRunning;
         private bool _isPaused;
         private bool _disposed;
@@ -80,7 +80,6 @@ namespace VirtualCamStudio.Services.Rendering
                 lock (_lock)
                 {
                     _targetFps = value;
-                    Debug.WriteLine($"[RenderLoop] Target FPS set to: {value}");
                 }
             }
         }
@@ -109,7 +108,6 @@ namespace VirtualCamStudio.Services.Rendering
         /// </summary>
         public RenderLoop()
         {
-            Debug.WriteLine("[RenderLoop] Initialized with 30 FPS target.");
         }
 
         // ============================================
@@ -129,19 +127,14 @@ namespace VirtualCamStudio.Services.Rendering
 
                 if (_isRunning)
                 {
-                    Debug.WriteLine("[RenderLoop] Already running.");
                     return;
                 }
 
-                Debug.WriteLine("[RenderLoop] Starting render loop...");
-
                 // Check if any subscribers exist
                 int subscriberCount = FrameRequested?.GetInvocationList()?.Length ?? 0;
-                Debug.WriteLine($"[RenderLoop] FrameRequested subscribers: {subscriberCount}");
 
                 if (subscriberCount == 0)
                 {
-                    Debug.WriteLine("[RenderLoop] ⚠️ WARNING: No subscribers to FrameRequested event!");
                 }
 
                 _isRunning = true;
@@ -152,8 +145,6 @@ namespace VirtualCamStudio.Services.Rendering
 
                 _cancellationTokenSource = new CancellationTokenSource();
                 _renderTask = Task.Run(() => RenderLoopTask(_cancellationTokenSource.Token));
-
-                Debug.WriteLine("[RenderLoop] ✓ Render loop started on background task");
             }
         }
 
@@ -167,11 +158,8 @@ namespace VirtualCamStudio.Services.Rendering
             {
                 if (!_isRunning)
                 {
-                    Debug.WriteLine("[RenderLoop] Not running.");
                     return;
                 }
-
-                Debug.WriteLine("[RenderLoop] Stopping render loop...");
 
                 _isRunning = false;
                 _isPaused = false;
@@ -186,7 +174,6 @@ namespace VirtualCamStudio.Services.Rendering
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderLoop] Error waiting for task: {ex.Message}");
             }
 
             lock (_lock)
@@ -194,8 +181,6 @@ namespace VirtualCamStudio.Services.Rendering
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
                 _renderTask = null;
-
-                Debug.WriteLine($"[RenderLoop] Stopped. Final measured FPS: {_actualFps:F2}");
             }
         }
 
@@ -209,17 +194,13 @@ namespace VirtualCamStudio.Services.Rendering
             {
                 if (!_isRunning)
                 {
-                    Debug.WriteLine("[RenderLoop] Cannot pause - not running.");
                     return;
                 }
 
                 if (_isPaused)
                 {
-                    Debug.WriteLine("[RenderLoop] Already paused.");
                     return;
                 }
-
-                Debug.WriteLine("[RenderLoop] Pausing render loop...");
                 _isPaused = true;
             }
         }
@@ -234,17 +215,13 @@ namespace VirtualCamStudio.Services.Rendering
             {
                 if (!_isRunning)
                 {
-                    Debug.WriteLine("[RenderLoop] Cannot resume - not running.");
                     return;
                 }
 
                 if (!_isPaused)
                 {
-                    Debug.WriteLine("[RenderLoop] Not paused.");
                     return;
                 }
-
-                Debug.WriteLine("[RenderLoop] Resuming render loop...");
                 _isPaused = false;
             }
         }
@@ -259,7 +236,6 @@ namespace VirtualCamStudio.Services.Rendering
         /// </summary>
         private void RenderLoopTask(CancellationToken cancellationToken)
         {
-            Debug.WriteLine("[RenderLoop.RenderLoopTask] 🚀 Background task started.");
             _stopwatch.Restart();
 
             long lastFrameTicks = 0;
@@ -281,7 +257,7 @@ namespace VirtualCamStudio.Services.Rendering
                     // If paused, sleep and continue
                     if (isPaused)
                     {
-                        Thread.Sleep(16); // ~60Hz check rate
+                        Thread.Sleep(8); // ~120Hz check rate for faster resume
                         continue;
                     }
 
@@ -295,12 +271,7 @@ namespace VirtualCamStudio.Services.Rendering
                     {
                         lastFrameTicks = currentTicks;
 
-                        // Log first frame and then every 90th frame (once every 3 seconds at 30fps)
                         frameCounter++;
-                        if (frameCounter == 1 || frameCounter % 90 == 0)
-                        {
-                            Debug.WriteLine($"[RenderLoop.RenderLoopTask] Frame #{frameCounter} - Requesting render...");
-                        }
 
                         // Raise frame requested event
                         RaiseFrameRequested();
@@ -316,19 +287,17 @@ namespace VirtualCamStudio.Services.Rendering
 
                         if (sleepMs > 0)
                         {
-                            Thread.Sleep(Math.Min(sleepMs, 16)); // Cap sleep at 16ms for responsiveness
+                            Thread.Sleep(Math.Min(sleepMs, 8)); // Cap sleep at 8ms for faster responsiveness
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderLoop.RenderLoopTask] ❌ Error in background task: {ex.Message}\n{ex.StackTrace}");
             }
             finally
             {
                 _stopwatch.Stop();
-                Debug.WriteLine($"[RenderLoop.RenderLoopTask] Background task stopped. Total frames: {frameCounter}");
             }
         }
 
@@ -339,12 +308,9 @@ namespace VirtualCamStudio.Services.Rendering
         {
             try
             {
-                Debug.WriteLine("[1] RenderLoop fired");
-
                 var handler = FrameRequested;
                 if (handler == null)
                 {
-                    Debug.WriteLine("[RenderLoop.RaiseFrameRequested] ⚠️⚠️⚠️ NO SUBSCRIBERS! Event will not fire! ⚠️⚠️⚠️");
                     return;
                 }
 
@@ -352,7 +318,6 @@ namespace VirtualCamStudio.Services.Rendering
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[RenderLoop.RaiseFrameRequested] ❌ EXCEPTION: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -383,8 +348,6 @@ namespace VirtualCamStudio.Services.Rendering
 
                 _frameCount = 0;
                 _lastFpsUpdateTicks = currentTicks;
-
-                Debug.WriteLine($"[RenderLoop] Actual FPS: {_actualFps:F2}");
             }
         }
 
@@ -401,7 +364,6 @@ namespace VirtualCamStudio.Services.Rendering
             {
                 Stop();
                 _disposed = true;
-                Debug.WriteLine("[RenderLoop] Disposed.");
             }
         }
     }

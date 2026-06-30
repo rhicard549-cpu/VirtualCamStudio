@@ -47,7 +47,6 @@ namespace VirtualCamStudio.Services
                     var connected = await _client.ConnectAsync();
                     if (!connected)
                     {
-                        System.Diagnostics.Debug.WriteLine("[CloudPhoneService] Cannot retrieve cloud phones - not connected to API.");
                         return Array.Empty<CloudPhone>();
                     }
                 }
@@ -61,14 +60,12 @@ namespace VirtualCamStudio.Services
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine("[CloudPhoneService] No cloud phones found or request failed.");
                 }
 
                 return response ?? Array.Empty<CloudPhone>();
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] Error retrieving cloud phones: {ex.Message}");
                 return Array.Empty<CloudPhone>();
             }
         }
@@ -90,7 +87,6 @@ namespace VirtualCamStudio.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] API request failed: {response.StatusCode}");
                     return null;
                 }
 
@@ -102,17 +98,14 @@ namespace VirtualCamStudio.Services
             }
             catch (HttpRequestException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] HTTP error: {ex.Message}");
                 return null;
             }
             catch (TaskCanceledException)
             {
-                System.Diagnostics.Debug.WriteLine("[CloudPhoneService] Request timed out.");
                 return null;
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] Unexpected error: {ex.Message}");
                 return null;
             }
         }
@@ -153,13 +146,11 @@ namespace VirtualCamStudio.Services
                         };
 
                         phones.Add(phone);
-                        System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] Parsed phone: {phone}");
                     }
                 }
             }
             catch (JsonException ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[CloudPhoneService] JSON parsing error: {ex.Message}");
             }
 
             return phones;

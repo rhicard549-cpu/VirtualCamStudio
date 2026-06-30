@@ -1,0 +1,9 @@
+MFStartup
+MFShutdown
+MFCreateDeviceSource
+MFCreateAttributes
+IMFActivate
+IMFMediaSource
+IMFAttributes
+CLSID_MFSourceResolver
+HRESULT

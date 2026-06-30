@@ -59,11 +59,9 @@ namespace VirtualCamStudio.Outputs
         /// <returns>A task that completes when all plugins have processed the frame.</returns>
         public async Task SendFrameAsync(Frame frame)
         {
-            Debug.WriteLine($"[7] OutputManager - registered outputs: {_outputs.Count}");
 
             if (frame == null || !frame.IsValid)
             {
-                System.Diagnostics.Debug.WriteLine($"[Outputs.OutputManager.SendFrameAsync] ⚠️ Invalid frame");
                 return;
             }
 
@@ -75,7 +73,6 @@ namespace VirtualCamStudio.Outputs
 
             if (currentOutputs.Length == 0)
             {
-                System.Diagnostics.Debug.WriteLine($"[Outputs.OutputManager.SendFrameAsync] ⚠️ No outputs registered!");
                 return;
             }
 

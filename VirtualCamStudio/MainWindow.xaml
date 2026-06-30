@@ -301,6 +301,205 @@
                           Checked="LoopCheckBox_Changed"
                           Unchecked="LoopCheckBox_Changed"/>
 
+                <!-- Audio Separator -->
+                <Border Width="1"
+                        Height="24"
+                        Background="#444"
+                        Margin="15,0,15,0"
+                        VerticalAlignment="Center"/>
+
+                <!-- Audio Playback Controls -->
+                <TextBlock Text="Audio:"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Margin="0,0,10,0"/>
+
+                <ComboBox x:Name="AudioDeviceComboBox"
+                          Width="180"
+                          Height="28"
+                          VerticalAlignment="Center"
+                          Margin="0,0,5,0"
+                          SelectionChanged="AudioDeviceComboBox_SelectionChanged"
+                          ToolTip="Select audio output device (must be set to Windows default mic for CloudPhone)">
+                </ComboBox>
+
+                <Button x:Name="LoadAudioButton"
+                        Content="📂 Load"
+                        Width="80"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#5555cc"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        Click="LoadAudioButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#6666dd"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#4444aa"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="PlayAudioButton"
+                        Content="▶"
+                        Width="40"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#00aa00"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="PlayAudioButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#00cc00"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#008800"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="PauseAudioButton"
+                        Content="⏸"
+                        Width="40"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#ff8800"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="PauseAudioButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#ff9900"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#dd7700"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="StopAudioButton"
+                        Content="⏹"
+                        Width="40"
+                        Height="28"
+                        Margin="0,0,5,0"
+                        VerticalAlignment="Center"
+                        Background="#cc0000"
+                        Foreground="White"
+                        BorderThickness="0"
+                        FontWeight="SemiBold"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="StopAudioButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4"
+                                                Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#dd0000"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter Property="Background" Value="#aa0000"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#444"/>
+                                    <Setter Property="Foreground" Value="#888"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <CheckBox x:Name="LoopAudioCheckBox"
+                          Content="Loop"
+                          Foreground="White"
+                          VerticalAlignment="Center"
+                          FontWeight="SemiBold"
+                          IsEnabled="False"
+                          Checked="LoopAudioCheckBox_Changed"
+                          Unchecked="LoopAudioCheckBox_Changed"/>
+
             </StackPanel>
 
         </Border>
@@ -673,6 +872,14 @@
                     <TextBlock x:Name="UnityCaptureStatusText"
                                Text="Stopped"/>
                 </StackPanel>
+            </StatusBarItem>
+
+            <Separator/>
+
+            <StatusBarItem>
+                <TextBlock x:Name="UnityCaptureSenderStatusText"
+                           Text="Sender: Starting..."
+                           Foreground="Gray"/>
             </StatusBarItem>
 
         </StatusBar>

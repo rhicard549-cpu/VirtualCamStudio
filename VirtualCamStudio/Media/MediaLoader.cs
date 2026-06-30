@@ -44,13 +44,11 @@ namespace VirtualCamStudio.Media
             {
                 if (string.IsNullOrWhiteSpace(filePath))
                 {
-                    Debug.WriteLine("[MediaLoader] Invalid file path provided.");
                     return null;
                 }
 
                 if (!File.Exists(filePath))
                 {
-                    Debug.WriteLine($"[MediaLoader] File not found: {filePath}");
                     return null;
                 }
 
@@ -70,13 +68,11 @@ namespace VirtualCamStudio.Media
                 }
                 else
                 {
-                    Debug.WriteLine($"[MediaLoader] Unsupported file extension: {extension}");
                     return null;
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaLoader] Error loading media: {ex.Message}");
                 return null;
             }
         }
@@ -126,14 +122,12 @@ namespace VirtualCamStudio.Media
         {
             try
             {
-                Debug.WriteLine($"[MediaLoader] Loading image: {fileName}");
 
                 // Load the image using ImageProcessor
                 Mat image = _imageProcessor.Load(filePath);
 
                 if (image == null || image.Empty())
                 {
-                    Debug.WriteLine($"[MediaLoader] Failed to load image: {fileName}");
                     return null;
                 }
 
@@ -151,13 +145,10 @@ namespace VirtualCamStudio.Media
 
                 // Dispose the image - we only needed metadata
                 image.Dispose();
-
-                Debug.WriteLine($"[MediaLoader] Image loaded: {mediaItem}");
                 return mediaItem;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaLoader] Error loading image: {ex.Message}");
                 return null;
             }
         }
@@ -169,14 +160,12 @@ namespace VirtualCamStudio.Media
         {
             try
             {
-                Debug.WriteLine($"[MediaLoader] Loading video: {fileName}");
 
                 // Open the video using VideoPlayer
                 bool opened = _videoPlayer.Open(filePath);
 
                 if (!opened || !_videoPlayer.IsOpened)
                 {
-                    Debug.WriteLine($"[MediaLoader] Failed to open video: {fileName}");
                     return null;
                 }
 
@@ -194,13 +183,10 @@ namespace VirtualCamStudio.Media
 
                 // Close the video - we only needed metadata
                 _videoPlayer.Close();
-
-                Debug.WriteLine($"[MediaLoader] Video loaded: {mediaItem}");
                 return mediaItem;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaLoader] Error loading video: {ex.Message}");
                 return null;
             }
         }

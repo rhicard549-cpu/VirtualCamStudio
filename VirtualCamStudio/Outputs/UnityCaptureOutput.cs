@@ -30,7 +30,6 @@ namespace VirtualCamStudio.Outputs
         /// </summary>
         public UnityCaptureOutput()
         {
-            Debug.WriteLine("[UnityCaptureOutput] Initializing...");
             ConnectToPipe();
         }
 
@@ -49,22 +48,17 @@ namespace VirtualCamStudio.Outputs
                         PipeName,
                         PipeDirection.Out,
                         PipeOptions.Asynchronous);
-
-                    Debug.WriteLine("[UnityCaptureOutput] Connecting to UnityCaptureSender...");
                     _pipeClient.Connect(500); // 500ms timeout
                     _isConnected = true;
-                    Debug.WriteLine("[UnityCaptureOutput] ✓ Connected to UnityCaptureSender");
                 }
                 catch (TimeoutException)
                 {
-                    Debug.WriteLine("[UnityCaptureOutput] ⚠️ Connection timeout - UnityCaptureSender not available");
                     _isConnected = false;
                     _pipeClient?.Dispose();
                     _pipeClient = null;
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine($"[UnityCaptureOutput] ❌ Connection error: {ex.Message}");
                     _isConnected = false;
                     _pipeClient?.Dispose();
                     _pipeClient = null;
@@ -78,14 +72,18 @@ namespace VirtualCamStudio.Outputs
         /// <param name="frame">The rendered frame to send.</param>
         public async Task SendFrameAsync(Frame frame)
         {
-            // DIAGNOSTIC: Log incoming frame state
-            Debug.WriteLine($"[UnityCaptureOutput.SendFrameAsync] Received frame - null: {frame == null}, IsValid: {frame?.IsValid ?? false}, Width: {frame?.Width ?? 0}x{frame?.Height ?? 0}");
-
             if (_disposed || frame == null || !frame.IsValid)
             {
-                Debug.WriteLine($"[UnityCaptureOutput.SendFrameAsync] ⚠️ Skipping - disposed: {_disposed}, null: {frame == null}, invalid: {!(frame?.IsValid ?? false)}");
+                if (_disposed)
+                    Debug.WriteLine($"[UnityCaptureOutput] ✗ SendFrameAsync called but disposed");
+                else if (frame == null)
+                    Debug.WriteLine($"[UnityCaptureOutput] ✗ SendFrameAsync called with null frame");
+                else if (!frame.IsValid)
+                    Debug.WriteLine($"[UnityCaptureOutput] ✗ SendFrameAsync called with invalid frame");
                 return;
             }
+
+            Debug.WriteLine($"[UnityCaptureOutput] → Received frame: {frame.Width}x{frame.Height}");
 
             try
             {
@@ -95,12 +93,15 @@ namespace VirtualCamStudio.Outputs
                 {
                     if (!_isConnected || _pipeClient == null || !_pipeClient.IsConnected)
                     {
+                        Debug.WriteLine($"[UnityCaptureOutput] Not connected, attempting to connect...");
                         ConnectToPipe();
                         if (!_isConnected || _pipeClient == null)
                         {
+                            Debug.WriteLine($"[UnityCaptureOutput] ✗ Failed to connect to pipe");
                             _framesFailed++;
                             return;
                         }
+                        Debug.WriteLine($"[UnityCaptureOutput] ✓ Connected to pipe");
                     }
                     currentPipe = _pipeClient;
                 }
@@ -117,7 +118,6 @@ namespace VirtualCamStudio.Outputs
                 if (frame.Image.Type() == MatType.CV_8UC4)
                 {
                     // Already 4-channel
-                    Debug.WriteLine($"[UnityCaptureOutput] 4-channel frame, PixelFormat={frame.PixelFormat}");
                     if (frame.PixelFormat == PixelFormat.BGRA)
                     {
                         bgraFrame = frame.Image;
@@ -132,7 +132,6 @@ namespace VirtualCamStudio.Outputs
                 else if (frame.Image.Type() == MatType.CV_8UC3)
                 {
                     // BGR to BGRA (just add alpha channel)
-                    Debug.WriteLine($"[UnityCaptureOutput] 3-channel frame, converting BGR to BGRA");
                     bgraFrame = new Mat();
                     Cv2.CvtColor(frame.Image, bgraFrame, ColorConversionCodes.BGR2BGRA);
                 }
@@ -152,9 +151,10 @@ namespace VirtualCamStudio.Outputs
                     int dataSize = width * height * 4;
 
                     // UnityCapture expects RGBA format (it then converts RGBA→BGRA internally)
-                    // Convert BGRA to RGBA
+                    // Convert BGRA to RGBA and flip vertically for correct orientation
                     Mat rgbaFrame = new Mat();
                     Cv2.CvtColor(bgraFrame, rgbaFrame, ColorConversionCodes.BGRA2RGBA);
+                    Cv2.Flip(rgbaFrame, rgbaFrame, FlipMode.X); // Flip vertically for UnityCapture
 
                     // Prepare header
                     byte[] headerBytes = new byte[20];
@@ -171,10 +171,6 @@ namespace VirtualCamStudio.Outputs
                         pixelData,
                         0,
                         dataSize);
-
-                    // DIAGNOSTIC: Check actual pixel values (RGBA format)
-                    Debug.WriteLine($"[UnityCaptureOutput] Frame: {width}x{height}, First pixel RGBA: ({pixelData[0]}, {pixelData[1]}, {pixelData[2]}, {pixelData[3]})");
-                    Debug.WriteLine($"[UnityCaptureOutput] Frame: Center pixel RGBA: ({pixelData[dataSize/2]}, {pixelData[dataSize/2+1]}, {pixelData[dataSize/2+2]}, {pixelData[dataSize/2+3]})");
 
                     // Send header then pixel data using captured pipe reference
                     await currentPipe.WriteAsync(headerBytes, 0, headerBytes.Length);
@@ -197,7 +193,6 @@ namespace VirtualCamStudio.Outputs
             }
             catch (IOException ex)
             {
-                Debug.WriteLine($"[UnityCaptureOutput] ❌ Pipe error: {ex.Message}");
                 _framesFailed++;
                 lock (_lock)
                 {
@@ -208,7 +203,6 @@ namespace VirtualCamStudio.Outputs
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[UnityCaptureOutput] ❌ Send error: {ex.Message}");
                 _framesFailed++;
             }
         }
@@ -231,7 +225,6 @@ namespace VirtualCamStudio.Outputs
             var now = DateTime.UtcNow;
             if ((now - _lastReportTime).TotalSeconds >= 1.0)
             {
-                Debug.WriteLine($"[UnityCaptureOutput] FPS Sent: {_framesSent} | Failed: {_framesFailed}");
                 _framesSent = 0;
                 _framesFailed = 0;
                 _lastReportTime = now;
@@ -262,7 +255,6 @@ namespace VirtualCamStudio.Outputs
 
             lock (_lock)
             {
-                Debug.WriteLine("[UnityCaptureOutput] Shutting down...");
                 _pipeClient?.Dispose();
                 _pipeClient = null;
                 _isConnected = false;
