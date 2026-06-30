@@ -11,6 +11,7 @@ namespace VirtualCamStudio.Outputs
     /// Output target that displays rendered frames in a WPF Image control (preview).
     /// Receives Frame objects and updates the preview on the UI thread.
     /// </summary>
+    [OutputPlugin("Preview", "Displays rendered frames in the application preview window", "Display", "1.0.0")]
     public class PreviewOutput : IOutputTarget
     {
         private readonly WpfImage _previewImage;

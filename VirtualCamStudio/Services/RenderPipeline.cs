@@ -194,6 +194,7 @@ namespace VirtualCamStudio.Services
                 if (!_mediaController.HasMedia)
                 {
                     Debug.WriteLine("[2] RenderPipeline - SKIPPED: No media loaded");
+                    Debug.WriteLine("[RenderPipeline] ❌ Fallback reason: No media loaded");
                     return;  // Silent - no spam when no media
                 }
 
@@ -205,6 +206,7 @@ namespace VirtualCamStudio.Services
                 if (sourceFrame == null || sourceFrame.Empty())
                 {
                     Debug.WriteLine("[RenderPipeline.OnFrameRequested] ⚠️ Source frame is null/empty");
+                    Debug.WriteLine("[RenderPipeline] ❌ Fallback reason: MediaController returned null/empty frame");
                     return;
                 }
 
@@ -217,6 +219,7 @@ namespace VirtualCamStudio.Services
                 if (_activeProfile == null)
                 {
                     Debug.WriteLine("[RenderPipeline.OnFrameRequested] ⚠️ No active profile - using defaults");
+                    Debug.WriteLine("[RenderPipeline] ⚠️ Note: Using default canvas dimensions (no active profile)");
                 }
 
                 Debug.WriteLine($"[RenderPipeline.OnFrameRequested] Rendering to canvas: {canvasWidth}x{canvasHeight}");
@@ -230,6 +233,22 @@ namespace VirtualCamStudio.Services
 
                 Debug.WriteLine($"[4] Viewport render finished - width: {renderedFrame.Width}, height: {renderedFrame.Height}");
                 Debug.WriteLine($"[RenderPipeline.OnFrameRequested] ✓ Frame rendered");
+
+                // DIAGNOSTIC: Check pixel data in rendered frame
+                if (renderedFrame != null && renderedFrame.IsValid && renderedFrame.Image != null && !renderedFrame.Image.Empty())
+                {
+                    unsafe
+                    {
+                        byte* ptr = (byte*)renderedFrame.Image.DataPointer;
+                        int channels = renderedFrame.Image.Channels();
+                        Debug.WriteLine($"[RenderPipeline] 🔍 PIXEL CHECK: First pixel = ({ptr[0]},{ptr[1]},{ptr[2]},{(channels > 3 ? ptr[3] : 255)}), Channels: {channels}");
+
+                        // Check center pixel too
+                        int centerOffset = ((renderedFrame.Height / 2) * renderedFrame.Width + (renderedFrame.Width / 2)) * channels;
+                        byte* centerPtr = ptr + centerOffset;
+                        Debug.WriteLine($"[RenderPipeline] 🔍 PIXEL CHECK: Center pixel = ({centerPtr[0]},{centerPtr[1]},{centerPtr[2]},{(channels > 3 ? centerPtr[3] : 255)})");
+                    }
+                }
 
                 // DEBUG: Save rendered frame to disk for inspection
                 try

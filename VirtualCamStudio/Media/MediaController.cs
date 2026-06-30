@@ -182,17 +182,37 @@ namespace VirtualCamStudio.Media
             lock (_frameLock)
             {
                 if (_currentFrame == null)
+                {
+                    Debug.WriteLine("[MediaController.GetCurrentFrame] ⚠️ _currentFrame is NULL");
                     return null;
+                }
+
+                if (_currentFrame.Empty())
+                {
+                    Debug.WriteLine("[MediaController.GetCurrentFrame] ⚠️ _currentFrame is EMPTY");
+                    return null;
+                }
 
                 try
                 {
                     // Return a clone to prevent cross-thread access issues
                     // The render pipeline will dispose this clone after rendering
-                    return _currentFrame.Clone();
+                    Mat cloned = _currentFrame.Clone();
+
+                    // DIAGNOSTIC: Check pixel data
+                    unsafe
+                    {
+                        byte* ptr = (byte*)cloned.DataPointer;
+                        int channels = cloned.Channels();
+                        Debug.WriteLine($"[MediaController.GetCurrentFrame] Returning frame: {cloned.Width}x{cloned.Height}, Channels: {channels}, First pixel: ({ptr[0]},{ptr[1]},{ptr[2]},{(channels > 3 ? ptr[3] : 255)})");
+                    }
+
+                    return cloned;
                 }
-                catch
+                catch (Exception ex)
                 {
                     // If cloning fails (e.g., frame was disposed during clone), return null
+                    Debug.WriteLine($"[MediaController.GetCurrentFrame] ❌ Clone failed: {ex.Message}");
                     return null;
                 }
             }
@@ -248,16 +268,30 @@ namespace VirtualCamStudio.Media
 
                 if (image == null || image.Empty())
                 {
-                    Debug.WriteLine($"[MediaController] Failed to load image data from: {filePath}");
+                    Debug.WriteLine($"[MediaController.LoadImageData] Failed to load image data from: {filePath}");
                     return null;
                 }
 
-                Debug.WriteLine($"[MediaController] Image data loaded: {image.Width}x{image.Height}");
+                Debug.WriteLine($"[MediaController.LoadImageData] Image data loaded: {image.Width}x{image.Height}, Channels: {image.Channels()}");
+
+                // DIAGNOSTIC: Check pixel data immediately after load
+                unsafe
+                {
+                    byte* ptr = (byte*)image.DataPointer;
+                    int channels = image.Channels();
+                    Debug.WriteLine($"[MediaController.LoadImageData] 🔍 First pixel after load: ({ptr[0]},{ptr[1]},{ptr[2]},{(channels > 3 ? ptr[3] : 255)})");
+
+                    // Check center pixel
+                    int centerOffset = ((image.Height / 2) * image.Width + (image.Width / 2)) * channels;
+                    byte* centerPtr = ptr + centerOffset;
+                    Debug.WriteLine($"[MediaController.LoadImageData] 🔍 Center pixel after load: ({centerPtr[0]},{centerPtr[1]},{centerPtr[2]},{(channels > 3 ? centerPtr[3] : 255)})");
+                }
+
                 return image;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[MediaController] Error loading image data: {ex.Message}");
+                Debug.WriteLine($"[MediaController.LoadImageData] Error loading image data: {ex.Message}");
                 return null;
             }
         }

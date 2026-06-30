@@ -322,5 +322,248 @@ namespace VirtualCamStudio.Services.OBS
                 return Array.Empty<string>();
             }
         }
+
+        /// <summary>
+        /// Creates a Window Capture source in the specified scene with automatic VirtualCamStudio window detection.
+        /// Configures capture method, cursor visibility, and client area settings.
+        /// </summary>
+        /// <param name="sceneName">The name of the scene to add the source to</param>
+        /// <param name="sourceName">The name for the new Window Capture source</param>
+        /// <returns>True if the source was created successfully, false otherwise</returns>
+        public async Task<bool> CreateWindowCaptureSourceAsync(string sceneName, string sourceName)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    Debug.WriteLine("[OBSSourceService] Cannot create Window Capture - not connected to OBS.");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(sceneName) || string.IsNullOrWhiteSpace(sourceName))
+                {
+                    Debug.WriteLine("[OBSSourceService] Invalid scene or source name provided.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSSourceService] Creating Window Capture source '{sourceName}' in scene '{sceneName}'...");
+
+                // Step 1: Find the VirtualCamStudio window
+                Debug.WriteLine("[OBSSourceService] Searching for VirtualCamStudio window...");
+                string? windowIdentifier = await FindVirtualCamStudioWindowAsync();
+
+                if (string.IsNullOrEmpty(windowIdentifier))
+                {
+                    Debug.WriteLine("[OBSSourceService] Failed to locate VirtualCamStudio window.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSSourceService] Window found: {windowIdentifier}");
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        var obs = _obsClient.GetInternalWebsocket();
+
+                        // Step 2: Create Window Capture source with settings
+                        var settings = new JObject
+                        {
+                            ["window"] = windowIdentifier,
+                            ["capture_cursor"] = false,      // Cursor OFF
+                            ["client_area"] = true,          // Client Area ON
+                            ["compatibility"] = false         // Compatibility Mode OFF
+                        };
+
+                        Debug.WriteLine($"[OBSSourceService] Creating source with settings: {settings}");
+
+                        // Create the input (source)
+                        obs.CreateInput(sceneName, sourceName, "window_capture", settings, true);
+
+                        Debug.WriteLine($"[OBSSourceService] Window Capture source '{sourceName}' created successfully.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSSourceService] Error creating Window Capture source: {ex.Message}");
+                        Debug.WriteLine($"[OBSSourceService] OBS WebSocket request failed - Scene: '{sceneName}', Source: '{sourceName}', Type: 'window_capture'");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSSourceService] Error in CreateWindowCaptureSourceAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Finds the VirtualCamStudio window identifier for OBS Window Capture.
+        /// Tries multiple strategies: process name, window title matching.
+        /// </summary>
+        /// <returns>Window identifier string in OBS format, or null if not found</returns>
+        private async Task<string?> FindVirtualCamStudioWindowAsync()
+        {
+            return await Task.Run<string?>(() =>
+            {
+                try
+                {
+                    // Strategy 1: Find by process name "VirtualCamStudio.exe"
+                    var processes = System.Diagnostics.Process.GetProcessesByName("VirtualCamStudio");
+                    if (processes.Length > 0)
+                    {
+                        var process = processes[0];
+                        var windowTitle = process.MainWindowTitle;
+
+                        if (!string.IsNullOrEmpty(windowTitle))
+                        {
+                            // OBS window_capture format on Windows: "[executable name]:Window Title"
+                            string identifier = $"[VirtualCamStudio.exe]:{windowTitle}";
+                            Debug.WriteLine($"[OBSSourceService] Found window by process: {identifier}");
+                            return identifier;
+                        }
+                    }
+
+                    // Strategy 2: Try finding by window title containing "VirtualCam Studio"
+                    processes = System.Diagnostics.Process.GetProcesses();
+                    foreach (var proc in processes)
+                    {
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(proc.MainWindowTitle) &&
+                                proc.MainWindowTitle.Contains("VirtualCam Studio", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string exeName = System.IO.Path.GetFileName(proc.MainModule?.FileName ?? "");
+                                if (!string.IsNullOrEmpty(exeName))
+                                {
+                                    string identifier = $"[{exeName}]:{proc.MainWindowTitle}";
+                                    Debug.WriteLine($"[OBSSourceService] Found window by title: {identifier}");
+                                    return identifier;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Skip processes we can't access
+                            continue;
+                        }
+                    }
+
+                    Debug.WriteLine("[OBSSourceService] VirtualCamStudio window not found.");
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[OBSSourceService] Error finding VirtualCamStudio window: {ex.Message}");
+                    return null;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Fits a source to the OBS canvas (equivalent to Right Click > Transform > Fit To Screen).
+        /// Calculates and applies the transform to scale the source to fill the canvas.
+        /// </summary>
+        /// <param name="sceneName">The name of the scene containing the source</param>
+        /// <param name="sourceName">The name of the source to fit</param>
+        /// <returns>True if the source was fitted successfully, false otherwise</returns>
+        public async Task<bool> FitSourceToCanvasAsync(string sceneName, string sourceName)
+        {
+            try
+            {
+                if (!_obsClient.IsConnected)
+                {
+                    Debug.WriteLine("[OBSSourceService] Cannot fit source - not connected to OBS.");
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(sceneName) || string.IsNullOrWhiteSpace(sourceName))
+                {
+                    Debug.WriteLine("[OBSSourceService] Invalid scene or source name provided.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSSourceService] Fitting source '{sourceName}' to canvas in scene '{sceneName}'...");
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        var obs = _obsClient.GetInternalWebsocket();
+
+                        // Step 1: Get video settings to know canvas size
+                        var videoSettings = obs.GetVideoSettings();
+                        int canvasWidth = videoSettings.BaseWidth;
+                        int canvasHeight = videoSettings.BaseHeight;
+
+                        Debug.WriteLine($"[OBSSourceService] Canvas size: {canvasWidth}x{canvasHeight}");
+
+                        // Step 2: Get the scene item ID for the source
+                        var sceneItems = obs.GetSceneItemList(sceneName);
+                        var targetItem = sceneItems.FirstOrDefault(item => item.SourceName == sourceName);
+
+                        if (targetItem == null)
+                        {
+                            Debug.WriteLine($"[OBSSourceService] Source '{sourceName}' not found in scene '{sceneName}'.");
+                            return false;
+                        }
+
+                        int sceneItemId = targetItem.ItemId;
+                        Debug.WriteLine($"[OBSSourceService] Scene item ID: {sceneItemId}");
+
+                        // Step 3: Get current transform to read source dimensions
+                        var transform = obs.GetSceneItemTransform(sceneName, sceneItemId);
+                        double sourceWidth = transform.SourceWidth;
+                        double sourceHeight = transform.SourceHeight;
+
+                        Debug.WriteLine($"[OBSSourceService] Source size: {sourceWidth}x{sourceHeight}");
+
+                        // Step 4: Calculate scale to fit (preserve aspect ratio, fill canvas)
+                        double scaleX = canvasWidth / sourceWidth;
+                        double scaleY = canvasHeight / sourceHeight;
+                        double scale = Math.Min(scaleX, scaleY); // Fit inside canvas
+
+                        Debug.WriteLine($"[OBSSourceService] Calculated scale: {scale:F3} (scaleX: {scaleX:F3}, scaleY: {scaleY:F3})");
+
+                        // Step 5: Calculate centered position
+                        double scaledWidth = sourceWidth * scale;
+                        double scaledHeight = sourceHeight * scale;
+                        double posX = (canvasWidth - scaledWidth) / 2.0;
+                        double posY = (canvasHeight - scaledHeight) / 2.0;
+
+                        Debug.WriteLine($"[OBSSourceService] Position: ({posX:F1}, {posY:F1})");
+
+                        // Step 6: Apply transform
+                        var newTransform = new JObject
+                        {
+                            ["positionX"] = posX,
+                            ["positionY"] = posY,
+                            ["scaleX"] = scale,
+                            ["scaleY"] = scale,
+                            ["alignment"] = 0,  // Top-left alignment
+                            ["boundsType"] = "OBS_BOUNDS_NONE"
+                        };
+
+                        obs.SetSceneItemTransform(sceneName, sceneItemId, newTransform);
+
+                        Debug.WriteLine($"[OBSSourceService] Source '{sourceName}' fitted to canvas successfully.");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSSourceService] Error fitting source to canvas: {ex.Message}");
+                        Debug.WriteLine($"[OBSSourceService] OBS WebSocket request failed - Scene: '{sceneName}', Source: '{sourceName}'");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSSourceService] Error in FitSourceToCanvasAsync: {ex.Message}");
+                return false;
+            }
+        }
     }
 }
+

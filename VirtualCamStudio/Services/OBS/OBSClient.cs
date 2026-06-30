@@ -373,6 +373,61 @@ namespace VirtualCamStudio.Services.OBS
         }
 
         /// <summary>
+        /// Sets the OBS canvas (base) resolution, output resolution, and FPS.
+        /// </summary>
+        /// <param name="width">Canvas and output width (e.g., 1080)</param>
+        /// <param name="height">Canvas and output height (e.g., 1920)</param>
+        /// <param name="fps">Frames per second (e.g., 30)</param>
+        /// <returns>True if settings were applied successfully, false otherwise</returns>
+        public async Task<bool> SetCanvasAndOutputSettingsAsync(int width, int height, int fps)
+        {
+            try
+            {
+                if (!_isConnected)
+                {
+                    Debug.WriteLine("[OBSClient] Cannot set video settings - not connected to OBS.");
+                    return false;
+                }
+
+                Debug.WriteLine($"[OBSClient] Setting canvas and output to {width}x{height} @ {fps} FPS...");
+
+                return await Task.Run(() =>
+                {
+                    try
+                    {
+                        // Get current video settings
+                        var currentSettings = _obs.GetVideoSettings();
+
+                        // Update settings
+                        currentSettings.BaseWidth = width;
+                        currentSettings.BaseHeight = height;
+                        currentSettings.OutputWidth = width;
+                        currentSettings.OutputHeight = height;
+                        currentSettings.FpsNumerator = fps;
+                        currentSettings.FpsDenominator = 1;
+
+                        // Apply new settings
+                        _obs.SetVideoSettings(currentSettings);
+
+                        Debug.WriteLine($"[OBSClient] Video settings applied: {width}x{height} @ {fps} FPS");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[OBSClient] Error setting video settings: {ex.Message}");
+                        Debug.WriteLine($"[OBSClient] OBS WebSocket request failed - SetVideoSettings({width}x{height} @ {fps} FPS)");
+                        return false;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OBSClient] Error in SetCanvasAndOutputSettingsAsync: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Disposes the client and releases resources.
         /// </summary>
         public void Dispose()

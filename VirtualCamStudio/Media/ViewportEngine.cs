@@ -41,6 +41,7 @@ namespace VirtualCamStudio.Media
             if (source.Empty())
             {
                 System.Diagnostics.Debug.WriteLine("[ViewportEngine] ❌ Source is EMPTY - returning empty frame");
+                System.Diagnostics.Debug.WriteLine("[ViewportEngine] ❌ Fallback reason: Source Mat is empty");
                 return new Frame(new Mat(), PixelFormat.Unknown);
             }
 
@@ -49,6 +50,19 @@ namespace VirtualCamStudio.Media
             System.Diagnostics.Debug.WriteLine($"  - Height: {source.Height}");
             System.Diagnostics.Debug.WriteLine($"  - Channels: {source.Channels()}");
             System.Diagnostics.Debug.WriteLine($"  - Type: {source.Type()}");
+
+            // Sample source pixel to verify input content
+            unsafe
+            {
+                byte* data = (byte*)source.DataPointer;
+                if (data != null)
+                {
+                    byte b = data[0];
+                    byte g = data[1];
+                    byte r = data[2];
+                    System.Diagnostics.Debug.WriteLine($"  - Source Pixel[0,0] RGB: ({r}, {g}, {b})");
+                }
+            }
 
             System.Diagnostics.Debug.WriteLine($"[ViewportEngine] Canvas:");
             System.Diagnostics.Debug.WriteLine($"  - Width: {canvasWidth}");
@@ -187,6 +201,26 @@ namespace VirtualCamStudio.Media
             System.Diagnostics.Debug.WriteLine($"  - Height: {canvas.Height}");
             System.Diagnostics.Debug.WriteLine($"  - Empty: {canvas.Empty()}");
             System.Diagnostics.Debug.WriteLine($"  - Channels: {canvas.Channels()}");
+
+            // Sample final canvas pixels to verify output content
+            unsafe
+            {
+                byte* data = (byte*)canvas.DataPointer;
+                if (data != null)
+                {
+                    byte b = data[0];
+                    byte g = data[1];
+                    byte r = data[2];
+                    System.Diagnostics.Debug.WriteLine($"  - Output Pixel[0,0] RGB: ({r}, {g}, {b})");
+
+                    // Check if output is solid blue (diagnostic indicator)
+                    bool isSolidBlue = (r == 0 && g == 0 && b == 255);
+                    if (isSolidBlue)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"  - ⚠️ WARNING: ViewportEngine output is SOLID BLUE");
+                    }
+                }
+            }
 
             // Determine pixel format based on number of channels
             PixelFormat pixelFormat = canvas.Channels() switch

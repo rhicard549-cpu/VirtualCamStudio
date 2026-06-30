@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Configuration;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -37,10 +38,7 @@ namespace VirtualCamStudio
         private readonly Services.OutputManager _legacyOutputManager = new();  // Old Frame-based system (for OBS compatibility)
         private readonly Outputs.OutputManager _outputManager = new();  // New async Frame-based system (Commit 40/42)
         private readonly VirtualCameraService _virtualCamera = new();
-        private readonly Services.OBS.OBSClient _obsClient = new();
-        private readonly Services.OBS.OBSSceneService _obsSceneService;
-        private readonly Services.OBS.OBSSourceService _obsSourceService;
-        private readonly Services.OBS.OBSImageOutput _obsImageOutput;
+        private Outputs.UnityCaptureOutput? _unityCaptureOutput;  // UnityCapture IPC output
 
         // Rendering infrastructure (centralized via RenderPipeline)
         private readonly RenderLoop _renderLoop = new();
@@ -86,12 +84,6 @@ namespace VirtualCamStudio
                 MediaListBox.ItemsSource = MediaItems;
                 System.Diagnostics.Debug.WriteLine("[MainWindow] MediaListBox bound");
 
-                // Initialize OBS services
-                _obsSceneService = new Services.OBS.OBSSceneService(_obsClient);
-                _obsSourceService = new Services.OBS.OBSSourceService(_obsClient);
-                _obsImageOutput = new Services.OBS.OBSImageOutput();
-                System.Diagnostics.Debug.WriteLine("[MainWindow] OBS services initialized");
-
                 // Register preview output (new Outputs system)
                 System.Diagnostics.Debug.WriteLine("[MainWindow] Creating PreviewOutput for new OutputManager...");
                 var previewOutput = new Outputs.PreviewOutput(PreviewImage);
@@ -111,7 +103,7 @@ namespace VirtualCamStudio
                     _renderLoop,
                     _mediaController,
                     _viewportEngine,
-                    _legacyOutputManager,  // Legacy Frame-based system for OBS/virtual camera compatibility
+                    _legacyOutputManager,  // Legacy Frame-based system for virtual camera compatibility
                     _outputManager);        // New async Frame-based system (Commit 40/42)
 
                 // Share framing settings reference
@@ -173,6 +165,15 @@ namespace VirtualCamStudio
                 _renderPipeline.Stop();
                 _renderPipeline.Dispose();
                 System.Diagnostics.Debug.WriteLine("[MainWindow] RenderPipeline stopped");
+            }
+
+            // Dispose UnityCapture output
+            if (_unityCaptureOutput != null)
+            {
+                _outputManager.Unregister(_unityCaptureOutput);
+                _unityCaptureOutput.Dispose();
+                _unityCaptureOutput = null;
+                System.Diagnostics.Debug.WriteLine("[MainWindow] UnityCapture output disposed");
             }
 
             // Stop video playback
@@ -1396,380 +1397,77 @@ namespace VirtualCamStudio
         }
 
         // ============================================
-        // OBS Connection (Temporary Test)
+        // ============================================
+        // Unity Video Capture Integration
         // ============================================
 
         /// <summary>
-        /// Handles the Connect OBS button click (temporary test).
-        /// Attempts to connect to OBS WebSocket and displays the result.
+        /// Handles the Start UnityCapture button click
         /// </summary>
-        private async void ConnectOBSButton_Click(object sender, RoutedEventArgs e)
+        private void StartUnityCaptureButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                // Disable button during connection attempt
-                ConnectOBSButton.IsEnabled = false;
-                ConnectOBSButton.Content = "Connecting...";
-                StatusText.Text = "Connecting to OBS...";
+                StatusText.Text = "Starting Unity Video Capture output...";
+                StartUnityCaptureButton.IsEnabled = false;
 
-                // Attempt to connect
-                bool connected = await _obsClient.ConnectAsync();
+                // Create and register UnityCapture output
+                _unityCaptureOutput = new Outputs.UnityCaptureOutput();
+                _outputManager.Register(_unityCaptureOutput);
 
-                if (connected)
-                {
-                    ConnectOBSButton.Content = "Connected ✓";
-                    ConnectOBSButton.Background = System.Windows.Media.Brushes.Green;
-                    StatusText.Text = "Connected to OBS";
-                    MessageBox.Show("Connected to OBS", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-                else
-                {
-                    ConnectOBSButton.Content = "Connect OBS";
-                    ConnectOBSButton.IsEnabled = true;
-                    StatusText.Text = "Failed to connect to OBS";
-                    MessageBox.Show("Failed to connect to OBS.\n\nMake sure OBS Studio is running and WebSocket server is enabled.", 
-                                    "Connection Failed", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                }
+                StatusText.Text = "Unity Video Capture started";
+                StopUnityCaptureButton.IsEnabled = true;
+
+                // Update status indicator
+                UnityCaptureStatusIndicator.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.LimeGreen);
+                UnityCaptureStatusText.Text = "Running";
+
+                Debug.WriteLine("[MainWindow] Unity Video Capture output started");
             }
             catch (Exception ex)
             {
-                ConnectOBSButton.Content = "Connect OBS";
-                ConnectOBSButton.IsEnabled = true;
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error connecting to OBS: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
+                StatusText.Text = $"Unity Video Capture error: {ex.Message}";
+                StartUnityCaptureButton.IsEnabled = true;
+                MessageBox.Show($"Error starting Unity Video Capture: {ex.Message}",
+                                "Error",
+                                MessageBoxButton.OK,
                                 MessageBoxImage.Error);
             }
         }
 
         /// <summary>
-        /// Handles the Refresh OBS Status button click (temporary test).
-        /// Retrieves and displays the current OBS status information.
+        /// Handles the Stop UnityCapture button click
         /// </summary>
-        private async void RefreshOBSStatusButton_Click(object sender, RoutedEventArgs e)
+        private void StopUnityCaptureButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (!_obsClient.IsConnected)
+                StatusText.Text = "Stopping Unity Video Capture output...";
+                StopUnityCaptureButton.IsEnabled = false;
+
+                if (_unityCaptureOutput != null)
                 {
-                    StatusText.Text = "Not connected to OBS";
-                    MessageBox.Show("Please connect to OBS first.", 
-                                    "Not Connected", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
+                    _outputManager.Unregister(_unityCaptureOutput);
+                    _unityCaptureOutput.Dispose();
+                    _unityCaptureOutput = null;
                 }
 
-                // Disable button during status retrieval
-                RefreshOBSStatusButton.IsEnabled = false;
-                RefreshOBSStatusButton.Content = "Refreshing...";
-                StatusText.Text = "Retrieving OBS status...";
+                StatusText.Text = "Unity Video Capture stopped";
+                StartUnityCaptureButton.IsEnabled = true;
 
-                // Get status
-                var status = await _obsClient.GetStatusAsync();
+                // Update status indicator
+                UnityCaptureStatusIndicator.Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
+                UnityCaptureStatusText.Text = "Stopped";
 
-                // Re-enable button
-                RefreshOBSStatusButton.IsEnabled = true;
-                RefreshOBSStatusButton.Content = "Refresh OBS Status";
-
-                if (status != null)
-                {
-                    StatusText.Text = "OBS status retrieved";
-
-                    // Display status in a message box
-                    string statusMessage = $"OBS Studio Status\n" +
-                                         $"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
-                                         $"Version: {status.OBSVersion}\n" +
-                                         $"WebSocket: {status.WebSocketVersion}\n\n" +
-                                         $"Current Scene: {status.CurrentScene}\n\n" +
-                                         $"Virtual Camera: {(status.VirtualCameraActive ? "✓ Active" : "✗ Inactive")}\n" +
-                                         $"Recording: {(status.RecordingActive ? "✓ Active" : "✗ Inactive")}\n" +
-                                         $"Streaming: {(status.StreamingActive ? "✓ Active" : "✗ Inactive")}";
-
-                    MessageBox.Show(statusMessage, 
-                                    "OBS Status", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Failed to retrieve OBS status";
-                    MessageBox.Show("Failed to retrieve OBS status.\n\nMake sure you are connected to OBS.", 
-                                    "Error", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Error);
-                }
+                Debug.WriteLine("[MainWindow] Unity Video Capture output stopped");
             }
             catch (Exception ex)
             {
-                RefreshOBSStatusButton.IsEnabled = true;
-                RefreshOBSStatusButton.Content = "Refresh OBS Status";
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error retrieving OBS status: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
-                                MessageBoxImage.Error);
-            }
-        }
-
-        // ============================================
-        // OBS Virtual Camera Control (Temporary Test)
-        // ============================================
-
-        /// <summary>
-        /// Handles the Start Virtual Camera button click (temporary test).
-        /// Starts the OBS virtual camera and displays the result.
-        /// </summary>
-        private async void StartVirtualCameraButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!_obsClient.IsConnected)
-                {
-                    StatusText.Text = "Not connected to OBS";
-                    MessageBox.Show("Please connect to OBS first.", 
-                                    "Not Connected", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Disable button during operation
-                StartVirtualCameraButton.IsEnabled = false;
-                StartVirtualCameraButton.Content = "Starting...";
-                StatusText.Text = "Starting virtual camera...";
-
-                // Start virtual camera
-                bool success = await _obsClient.StartVirtualCameraAsync();
-
-                // Re-enable button
-                StartVirtualCameraButton.IsEnabled = true;
-                StartVirtualCameraButton.Content = "Start Virtual Camera";
-
-                if (success)
-                {
-                    StatusText.Text = "Virtual camera started";
-                    MessageBox.Show("OBS Virtual Camera started successfully!", 
-                                    "Success", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Failed to start virtual camera";
-                    MessageBox.Show("Failed to start OBS Virtual Camera.\n\nMake sure OBS is connected and the virtual camera is not already running.", 
-                                    "Failed", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                StartVirtualCameraButton.IsEnabled = true;
-                StartVirtualCameraButton.Content = "Start Virtual Camera";
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error starting virtual camera: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
-                                MessageBoxImage.Error);
-            }
-        }
-
-        /// <summary>
-        /// Handles the Stop Virtual Camera button click (temporary test).
-        /// Stops the OBS virtual camera and displays the result.
-        /// </summary>
-        private async void StopVirtualCameraButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!_obsClient.IsConnected)
-                {
-                    StatusText.Text = "Not connected to OBS";
-                    MessageBox.Show("Please connect to OBS first.", 
-                                    "Not Connected", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Disable button during operation
-                StopVirtualCameraButton.IsEnabled = false;
-                StopVirtualCameraButton.Content = "Stopping...";
-                StatusText.Text = "Stopping virtual camera...";
-
-                // Stop virtual camera
-                bool success = await _obsClient.StopVirtualCameraAsync();
-
-                // Re-enable button
-                StopVirtualCameraButton.IsEnabled = true;
-                StopVirtualCameraButton.Content = "Stop Virtual Camera";
-
-                if (success)
-                {
-                    StatusText.Text = "Virtual camera stopped";
-                    MessageBox.Show("OBS Virtual Camera stopped successfully!", 
-                                    "Success", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Failed to stop virtual camera";
-                    MessageBox.Show("Failed to stop OBS Virtual Camera.\n\nMake sure OBS is connected and the virtual camera is running.", 
-                                    "Failed", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                StopVirtualCameraButton.IsEnabled = true;
-                StopVirtualCameraButton.Content = "Stop Virtual Camera";
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error stopping virtual camera: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
-                                MessageBoxImage.Error);
-            }
-        }
-
-        // ============================================
-        // OBS Scene Setup (Temporary Test)
-        // ============================================
-
-        /// <summary>
-        /// Handles the Setup OBS Scene button click (temporary test).
-        /// Ensures the VirtualCam Studio scene exists and switches to it.
-        /// </summary>
-        private async void SetupOBSSceneButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!_obsClient.IsConnected)
-                {
-                    StatusText.Text = "Not connected to OBS";
-                    MessageBox.Show("Please connect to OBS first.", 
-                                    "Not Connected", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Disable button during operation
-                SetupOBSSceneButton.IsEnabled = false;
-                SetupOBSSceneButton.Content = "Setting up...";
-                StatusText.Text = "Setting up OBS scene...";
-
-                // Ensure and switch to VirtualCam Studio scene
-                bool success = await _obsSceneService.EnsureVirtualCamSceneAsync();
-
-                // Re-enable button
-                SetupOBSSceneButton.IsEnabled = true;
-                SetupOBSSceneButton.Content = "Setup OBS Scene";
-
-                if (success)
-                {
-                    StatusText.Text = "Scene ready";
-                    MessageBox.Show("Scene Ready\n\nThe 'VirtualCam Studio' scene is now active in OBS.", 
-                                    "Success", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Scene setup failed";
-                    MessageBox.Show("Scene Setup Failed\n\nUnable to create or switch to the VirtualCam Studio scene.\n\nMake sure OBS is connected and running properly.", 
-                                    "Failed", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                SetupOBSSceneButton.IsEnabled = true;
-                SetupOBSSceneButton.Content = "Setup OBS Scene";
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error setting up OBS scene: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
-                                MessageBoxImage.Error);
-            }
-        }
-
-        // ============================================
-        // OBS Source Setup (Temporary Test)
-        // ============================================
-
-        /// <summary>
-        /// Handles the Setup Preview Source button click (temporary test).
-        /// Ensures the VirtualCam Preview image source exists in the VirtualCam Studio scene.
-        /// </summary>
-        private async void SetupPreviewSourceButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!_obsClient.IsConnected)
-                {
-                    StatusText.Text = "Not connected to OBS";
-                    MessageBox.Show("Please connect to OBS first.", 
-                                    "Not Connected", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Check if we have an output image to use
-                if (!_obsImageOutput.FileExists)
-                {
-                    StatusText.Text = "No preview image available";
-                    MessageBox.Show("No Preview Image Available\n\nPlease load a media item first to generate a preview image.", 
-                                    "No Image", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Disable button during operation
-                SetupPreviewSourceButton.IsEnabled = false;
-                SetupPreviewSourceButton.Content = "Setting up...";
-                StatusText.Text = "Setting up preview source...";
-
-                // Ensure the preview source exists and is configured
-                bool success = await _obsSourceService.EnsurePreviewSourceAsync(_obsImageOutput.OutputPath);
-
-                // Re-enable button
-                SetupPreviewSourceButton.IsEnabled = true;
-                SetupPreviewSourceButton.Content = "Setup Preview Source";
-
-                if (success)
-                {
-                    StatusText.Text = "Preview source ready";
-                    MessageBox.Show("Preview Source Ready\n\nThe 'VirtualCam Preview' image source is now configured in OBS.", 
-                                    "Success", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Information);
-                }
-                else
-                {
-                    StatusText.Text = "Source setup failed";
-                    MessageBox.Show("Source Setup Failed\n\nUnable to create or update the preview source.\n\nMake sure OBS is connected and the VirtualCam Studio scene exists.", 
-                                    "Failed", 
-                                    MessageBoxButton.OK, 
-                                    MessageBoxImage.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                SetupPreviewSourceButton.IsEnabled = true;
-                SetupPreviewSourceButton.Content = "Setup Preview Source";
-                StatusText.Text = $"Error: {ex.Message}";
-                MessageBox.Show($"Error setting up preview source: {ex.Message}", 
-                                "Error", 
-                                MessageBoxButton.OK, 
+                StatusText.Text = $"Unity Video Capture error: {ex.Message}";
+                StopUnityCaptureButton.IsEnabled = true;
+                MessageBox.Show($"Error stopping Unity Video Capture: {ex.Message}",
+                                "Error",
+                                MessageBoxButton.OK,
                                 MessageBoxImage.Error);
             }
         }

@@ -66,10 +66,10 @@
 
                 </ComboBox>
 
-                <!-- Temporary OBS Test Button -->
-                <Button x:Name="ConnectOBSButton"
-                        Content="Connect OBS"
-                        Width="120"
+                <!-- Start Unity Video Capture Button -->
+                <Button x:Name="StartUnityCaptureButton"
+                        Content="Start Unity Video Capture"
+                        Width="200"
                         Height="28"
                         Margin="20,0,0,0"
                         VerticalAlignment="Center"
@@ -78,7 +78,7 @@
                         BorderThickness="0"
                         FontWeight="SemiBold"
                         Cursor="Hand"
-                        Click="ConnectOBSButton_Click">
+                        Click="StartUnityCaptureButton_Click">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">
@@ -105,19 +105,20 @@
                     </Button.Style>
                 </Button>
 
-                <!-- Temporary OBS Status Button -->
-                <Button x:Name="RefreshOBSStatusButton"
-                        Content="Refresh OBS Status"
-                        Width="150"
+                <!-- Stop Unity Video Capture Button -->
+                <Button x:Name="StopUnityCaptureButton"
+                        Content="Stop Unity Video Capture"
+                        Width="200"
                         Height="28"
                         Margin="10,0,0,0"
                         VerticalAlignment="Center"
-                        Background="#cc6600"
+                        Background="#cc0000"
                         Foreground="White"
                         BorderThickness="0"
                         FontWeight="SemiBold"
                         Cursor="Hand"
-                        Click="RefreshOBSStatusButton_Click">
+                        IsEnabled="False"
+                        Click="StopUnityCaptureButton_Click">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">
@@ -134,49 +135,14 @@
                             </Setter>
                             <Style.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#dd7711"/>
+                                    <Setter Property="Background" Value="#dd0000"/>
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#aa5500"/>
+                                    <Setter Property="Background" Value="#aa0000"/>
                                 </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Temporary Virtual Camera Start Button -->
-                <Button x:Name="StartVirtualCameraButton"
-                        Content="Start Virtual Camera"
-                        Width="160"
-                        Height="28"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center"
-                        Background="#00aa00"
-                        Foreground="White"
-                        BorderThickness="0"
-                        FontWeight="SemiBold"
-                        Cursor="Hand"
-                        Click="StartVirtualCameraButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}"
-                                                CornerRadius="4"
-                                                Padding="10,5">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#00bb00"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#008800"/>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#555555"/>
+                                    <Setter Property="Foreground" Value="#888888"/>
                                 </Trigger>
                             </Style.Triggers>
                         </Style>
@@ -334,123 +300,6 @@
                           IsEnabled="False"
                           Checked="LoopCheckBox_Changed"
                           Unchecked="LoopCheckBox_Changed"/>
-
-                <!-- Temporary Virtual Camera Stop Button -->
-                <Button x:Name="StopVirtualCameraButton"
-                        Content="Stop Virtual Camera"
-                        Width="160"
-                        Height="28"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center"
-                        Background="#cc0000"
-                        Foreground="White"
-                        BorderThickness="0"
-                        FontWeight="SemiBold"
-                        Cursor="Hand"
-                        Click="StopVirtualCameraButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}"
-                                                CornerRadius="4"
-                                                Padding="10,5">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#dd1111"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#aa0000"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Temporary OBS Scene Setup Button -->
-                <Button x:Name="SetupOBSSceneButton"
-                        Content="Setup OBS Scene"
-                        Width="150"
-                        Height="28"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center"
-                        Background="#9933cc"
-                        Foreground="White"
-                        BorderThickness="0"
-                        FontWeight="SemiBold"
-                        Cursor="Hand"
-                        Click="SetupOBSSceneButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}"
-                                                CornerRadius="4"
-                                                Padding="10,5">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#aa44dd"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#7722aa"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
-
-                <!-- Temporary OBS Source Setup Button -->
-                <Button x:Name="SetupPreviewSourceButton"
-                        Content="Setup Preview Source"
-                        Width="170"
-                        Height="28"
-                        Margin="10,0,0,0"
-                        VerticalAlignment="Center"
-                        Background="#cc6600"
-                        Foreground="White"
-                        BorderThickness="0"
-                        FontWeight="SemiBold"
-                        Cursor="Hand"
-                        Click="SetupPreviewSourceButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}"
-                                                CornerRadius="4"
-                                                Padding="10,5">
-                                            <ContentPresenter HorizontalAlignment="Center"
-                                                              VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#dd7711"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter Property="Background" Value="#aa5500"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
 
             </StackPanel>
 
@@ -808,6 +657,22 @@
                 <TextBlock x:Name="ResolutionText"
                            Text="1080 × 1920 @30 FPS"/>
 
+            </StatusBarItem>
+
+            <Separator/>
+
+            <StatusBarItem>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Unity Video Capture: "
+                               Margin="0,0,5,0"/>
+                    <Ellipse x:Name="UnityCaptureStatusIndicator"
+                             Width="10"
+                             Height="10"
+                             Fill="Gray"
+                             Margin="0,0,5,0"/>
+                    <TextBlock x:Name="UnityCaptureStatusText"
+                               Text="Stopped"/>
+                </StackPanel>
             </StatusBarItem>
 
         </StatusBar>
