@@ -309,7 +309,8 @@ namespace VirtualCamStudio.Media
 
         /// <summary>
         /// Seeks to a specific frame number (async version for UI).
-        /// Playback continues from the new position if playing.
+        /// Does NOT resume playback - stays paused after seeking.
+        /// Use this for manual frame-by-frame navigation.
         /// </summary>
         /// <param name="frameNumber">The frame number to seek to</param>
         public async Task<bool> SeekAsync(long frameNumber)
@@ -320,6 +321,7 @@ namespace VirtualCamStudio.Media
 
                 bool wasPlaying = _state == PlaybackState.Playing;
 
+                // Always pause before seeking
                 if (wasPlaying)
                 {
                     Debug.WriteLine($"[PlaybackEngine] Pausing before seek...");
@@ -330,11 +332,8 @@ namespace VirtualCamStudio.Media
                 bool success = _videoPlayer.Seek(frameNumber);
                 Debug.WriteLine($"[PlaybackEngine] VideoPlayer.Seek returned: {success}");
 
-                if (wasPlaying && success)
-                {
-                    Debug.WriteLine($"[PlaybackEngine] Resuming playback after seek...");
-                    Play();
-                }
+                // DO NOT auto-resume - manual seeks should stay paused
+                // User can press Play button if they want to resume
 
                 return success;
             }
