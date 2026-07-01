@@ -174,10 +174,10 @@ namespace VirtualCamStudio.Media
         }
 
         /// <summary>
-        /// Pauses video playback.
+        /// Pauses video playback (async version for UI).
         /// The current position is maintained.
         /// </summary>
-        public void Pause()
+        public async Task PauseAsync()
         {
             if (_state != PlaybackState.Playing)
             {
@@ -188,15 +188,57 @@ namespace VirtualCamStudio.Media
             Debug.WriteLine("[PlaybackEngine] Pausing playback...");
 
             _playbackCancellation?.Cancel();
-            _playbackTask?.Wait();
+
+            // Don't block - await the task asynchronously
+            if (_playbackTask != null)
+            {
+                try
+                {
+                    await _playbackTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancelling
+                }
+            }
 
             SetState(PlaybackState.Paused);
         }
 
         /// <summary>
-        /// Stops video playback and resets to the beginning.
+        /// Pauses video playback (synchronous version for internal use).
+        /// The current position is maintained.
+        /// WARNING: Do not call from UI thread - use PauseAsync() instead.
         /// </summary>
-        public void Stop()
+        private void Pause()
+        {
+            if (_state != PlaybackState.Playing)
+            {
+                Debug.WriteLine("[PlaybackEngine] Not playing - cannot pause.");
+                return;
+            }
+
+            Debug.WriteLine("[PlaybackEngine] Pausing playback...");
+
+            _playbackCancellation?.Cancel();
+
+            // Blocking wait - only safe for internal use
+            try
+            {
+                _playbackTask?.Wait();
+            }
+            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+            {
+                // Expected when cancelling
+            }
+
+            SetState(PlaybackState.Paused);
+        }
+
+        /// <summary>
+        /// Stops video playback and resets to the beginning (async version for UI).
+        /// </summary>
+        public async Task StopAsync()
         {
             if (_state == PlaybackState.Stopped)
             {
@@ -207,7 +249,54 @@ namespace VirtualCamStudio.Media
             Debug.WriteLine("[PlaybackEngine] Stopping playback...");
 
             _playbackCancellation?.Cancel();
-            _playbackTask?.Wait();
+
+            // Don't block - await the task asynchronously
+            if (_playbackTask != null)
+            {
+                try
+                {
+                    await _playbackTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancelling
+                }
+            }
+
+            // Reset to beginning
+            if (_videoPlayer.IsOpened)
+            {
+                _videoPlayer.Seek(0);
+            }
+
+            SetState(PlaybackState.Stopped);
+        }
+
+        /// <summary>
+        /// Stops video playback and resets to the beginning (synchronous version for internal use).
+        /// WARNING: Do not call from UI thread - use StopAsync() instead.
+        /// </summary>
+        private void Stop()
+        {
+            if (_state == PlaybackState.Stopped)
+            {
+                Debug.WriteLine("[PlaybackEngine] Already stopped.");
+                return;
+            }
+
+            Debug.WriteLine("[PlaybackEngine] Stopping playback...");
+
+            _playbackCancellation?.Cancel();
+
+            // Blocking wait - only safe for internal use
+            try
+            {
+                _playbackTask?.Wait();
+            }
+            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException)
+            {
+                // Expected when cancelling
+            }
 
             // Reset to beginning
             if (_videoPlayer.IsOpened)

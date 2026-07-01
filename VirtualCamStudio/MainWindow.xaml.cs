@@ -177,7 +177,7 @@ namespace VirtualCamStudio
             }
         }
 
-        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        private async void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             // Stop the background sender process
             _senderProcess?.Stop();
@@ -200,8 +200,8 @@ namespace VirtualCamStudio
                 _unityCaptureOutput = null;
             }
 
-            // Stop video playback
-            StopVideoPlayback();
+            // Stop video playback (async to prevent freeze)
+            await StopVideoPlaybackAsync();
 
             // Dispose current media frame
             _currentMediaFrame?.Dispose();
@@ -570,7 +570,7 @@ namespace VirtualCamStudio
             }
         }
 
-        private void LoadImage(string path)
+        private async Task LoadImageAsync(string path)
         {
             // Determine if this is a video or image
             string extension = Path.GetExtension(path).ToLowerInvariant();
@@ -578,22 +578,28 @@ namespace VirtualCamStudio
 
             if (isVideo)
             {
-                LoadVideo(path);
+                await LoadVideoAsync(path);
             }
             else
             {
-                LoadImageFile(path);
+                await LoadImageFileAsync(path);
             }
 
             DropText.Visibility = Visibility.Collapsed;
             StatusText.Text = Path.GetFileName(path);
         }
 
-        private void LoadImageFile(string path)
+        private void LoadImage(string path)
+        {
+            // Synchronous wrapper for compatibility
+            _ = LoadImageAsync(path);
+        }
+
+        private async Task LoadImageFileAsync(string path)
         {
 
             // Stop any existing video playback
-            StopVideoPlayback();
+            await StopVideoPlaybackAsync();
 
             // Clear any previous video state
             _isVideoActive = false;
@@ -622,11 +628,11 @@ namespace VirtualCamStudio
             UpdatePlaybackControlsState(false);
         }
 
-        private void LoadVideo(string path)
+        private async Task LoadVideoAsync(string path)
         {
 
             // Stop any existing video playback
-            StopVideoPlayback();
+            await StopVideoPlaybackAsync();
 
             // Load video metadata via MediaController first
             if (!_mediaController.Load(path))
@@ -722,11 +728,11 @@ namespace VirtualCamStudio
             }
         }
 
-        private void StopVideoPlayback()
+        private async Task StopVideoPlaybackAsync()
         {
             if (_playbackEngine != null)
             {
-                _playbackEngine.Stop();
+                await _playbackEngine.StopAsync();
                 _playbackEngine.FrameReady -= PlaybackEngine_FrameReady;
                 _playbackEngine.Dispose();
                 _playbackEngine = null;
@@ -736,6 +742,13 @@ namespace VirtualCamStudio
             {
                 _videoPlayer.Close();
             }
+        }
+
+        private void StopVideoPlayback()
+        {
+            // Synchronous wrapper for cases where async is not possible
+            // This should be avoided when called from UI thread
+            StopVideoPlaybackAsync().GetAwaiter().GetResult();
         }
 
         private void UpdatePlaybackControlsState(bool hasVideo)
@@ -789,19 +802,19 @@ namespace VirtualCamStudio
             }
         }
 
-        private void PauseButton_Click(object sender, RoutedEventArgs e)
+        private async void PauseButton_Click(object sender, RoutedEventArgs e)
         {
             if (_playbackEngine != null)
             {
-                _playbackEngine.Pause();
+                await _playbackEngine.PauseAsync();
             }
         }
 
-        private void StopButton_Click(object sender, RoutedEventArgs e)
+        private async void StopButton_Click(object sender, RoutedEventArgs e)
         {
             if (_playbackEngine != null)
             {
-                _playbackEngine.Stop();
+                await _playbackEngine.StopAsync();
 
                 // Display first frame when stopped
                 DisplayFirstFrame();
