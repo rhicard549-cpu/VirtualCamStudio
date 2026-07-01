@@ -589,10 +589,10 @@ namespace VirtualCamStudio
             StatusText.Text = Path.GetFileName(path);
         }
 
-        private void LoadImage(string path)
+        private async void LoadImage(string path)
         {
-            // Synchronous wrapper for compatibility
-            _ = LoadImageAsync(path);
+            // Fire-and-forget is intentional here for UI responsiveness from sync context
+            await LoadImageAsync(path);
         }
 
         private async Task LoadImageFileAsync(string path)
@@ -612,8 +612,11 @@ namespace VirtualCamStudio
             if (!_mediaController.Load(path))
             {
                 StatusText.Text = "Failed to load image";
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Failed to load image: {path}");
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Image loaded successfully: {Path.GetFileName(path)}");
 
             // Reset framing settings (via RenderPipeline)
             if (_renderPipeline != null)
@@ -638,8 +641,11 @@ namespace VirtualCamStudio
             if (!_mediaController.Load(path))
             {
                 StatusText.Text = "Failed to load video metadata";
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Failed to load video metadata: {path}");
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Video metadata loaded: {Path.GetFileName(path)}");
 
             // Open the video
             if (!_videoPlayer.Open(path))

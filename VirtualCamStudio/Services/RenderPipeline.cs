@@ -39,6 +39,7 @@ namespace VirtualCamStudio.Services
         private CameraProfile? _activeProfile;
         private bool _disposed;
         private DateTime _lastUpdateTime = DateTime.Now;
+        private int _frameCounter = 0;  // Diagnostic frame counter
 
         // ============================================
         // Properties
@@ -237,6 +238,12 @@ namespace VirtualCamStudio.Services
                 if (_newOutputManager != null)
                 {
                     await _newOutputManager.SendFrameAsync(renderedFrame);
+
+                    // Periodic diagnostics (every 60 frames = ~2 seconds at 30fps)
+                    if (System.Threading.Interlocked.Increment(ref _frameCounter) % 60 == 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[RenderPipeline] ? Frame #{_frameCounter} sent to Cloud Phone");
+                    }
                 }
 
                 // Clean up rendered frame (AFTER all async operations complete)
