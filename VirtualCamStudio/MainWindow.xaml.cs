@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using OpenCvSharp;
+using VirtualCamStudio.Camera;
 using VirtualCamStudio.Core;
 using VirtualCamStudio.Helpers;
 using VirtualCamStudio.Models;
@@ -140,6 +141,9 @@ namespace VirtualCamStudio
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             LoadAndPopulateCameraProfiles();
+
+            // Load phone profiles for virtual camera simulation
+            LoadAndPopulatePhoneProfiles();
 
             // Populate audio devices
             PopulateAudioDevices();
@@ -332,6 +336,37 @@ namespace VirtualCamStudio
         {
             string appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             return Path.Combine(appDataPath, "VirtualCamStudio", "LastProfile.txt");
+        }
+
+        /// <summary>
+        /// Loads all phone profiles and populates the PhoneProfileComboBox.
+        /// Sets Redmi Flagship as the default.
+        /// </summary>
+        private void LoadAndPopulatePhoneProfiles()
+        {
+            // Get all available phone profiles
+            List<PhoneProfile> profiles = PhoneProfileFactory.GetAllProfiles();
+
+            // Clear existing items
+            PhoneProfileComboBox.Items.Clear();
+
+            // Populate ComboBox with profile names
+            foreach (var profile in profiles)
+            {
+                PhoneProfileComboBox.Items.Add(profile.Name);
+            }
+
+            // Select Redmi Flagship as default (index 0)
+            if (PhoneProfileComboBox.Items.Count > 0)
+            {
+                PhoneProfileComboBox.SelectedIndex = 0;
+
+                // Load the default profile into the camera engine
+                if (_renderPipeline != null)
+                {
+                    _renderPipeline.CameraEngine.LoadProfile(PhoneProfileFactory.GetDefault());
+                }
+            }
         }
 
         private void Window_DragOver(object sender, DragEventArgs e)
@@ -980,12 +1015,13 @@ namespace VirtualCamStudio
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
             if (ZoomValueText == null || _renderPipeline == null) return;
 
-            _renderPipeline.FramingSettings.Zoom = ZoomSlider.Value;
+            // ZoomSlider now controls camera distance (inverse relationship)
+            // Slider value 1.0 = distance 1.0 (standard)
+            // For UI consistency, we keep the slider representing "zoom" feel
+            // but internally it controls distance
+            _renderPipeline.CameraEngine.SetDistance(1.0 / ZoomSlider.Value);
 
             ZoomValueText.Text = $"{ZoomSlider.Value * 100:0}%";
-
-            // Update pan slider ranges based on new zoom level
-            UpdatePanSliderRanges();
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -997,15 +1033,10 @@ namespace VirtualCamStudio
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
             if (HorizontalValueText == null || _renderPipeline == null) return;
 
-            // Clamp to valid pan bounds
-            var (minX, maxX, minY, maxY) = CalculatePanBounds();
-            double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
-            double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
+            // XSlider now controls camera position X
+            _renderPipeline.CameraEngine.SetPosition(XSlider.Value, _renderPipeline.CameraEngine.Target.PositionY);
 
-            _renderPipeline.FramingSettings.OffsetX = clampedX;
-            _renderPipeline.FramingSettings.OffsetY = clampedY;
-
-            HorizontalValueText.Text = $"{clampedX:0}";
+            HorizontalValueText.Text = $"{XSlider.Value:0}";
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -1017,15 +1048,10 @@ namespace VirtualCamStudio
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
             if (VerticalValueText == null || _renderPipeline == null) return;
 
-            // Clamp to valid pan bounds
-            var (minX, maxX, minY, maxY) = CalculatePanBounds();
-            double clampedX = System.Math.Max(minX, System.Math.Min(maxX, XSlider.Value));
-            double clampedY = System.Math.Max(minY, System.Math.Min(maxY, YSlider.Value));
+            // YSlider now controls camera position Y
+            _renderPipeline.CameraEngine.SetPosition(_renderPipeline.CameraEngine.Target.PositionX, YSlider.Value);
 
-            _renderPipeline.FramingSettings.OffsetX = clampedX;
-            _renderPipeline.FramingSettings.OffsetY = clampedY;
-
-            VerticalValueText.Text = $"{clampedY:0}";
+            VerticalValueText.Text = $"{YSlider.Value:0}";
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -1037,9 +1063,44 @@ namespace VirtualCamStudio
             // Guard: Skip if controls not fully initialized yet (during XAML loading)
             if (RotationValueText == null || _renderPipeline == null) return;
 
-            _renderPipeline.FramingSettings.Rotation = RotationSlider.Value;
+            // RotationSlider now controls camera roll
+            _renderPipeline.CameraEngine.SetRoll(RotationSlider.Value);
 
             RotationValueText.Text = $"{RotationSlider.Value:0}°";
+
+            // Rendering will happen automatically via RenderLoop
+        }
+
+        private void PitchSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressSliderEvents) return;
+
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (PitchValueText == null || _renderPipeline == null) return;
+
+            // Update camera pitch
+            _renderPipeline.CameraEngine.SetTilt(
+                PitchSlider.Value,
+                _renderPipeline.CameraEngine.Target.Yaw);
+
+            PitchValueText.Text = $"{PitchSlider.Value:0}°";
+
+            // Rendering will happen automatically via RenderLoop
+        }
+
+        private void YawSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (_suppressSliderEvents) return;
+
+            // Guard: Skip if controls not fully initialized yet (during XAML loading)
+            if (YawValueText == null || _renderPipeline == null) return;
+
+            // Update camera yaw
+            _renderPipeline.CameraEngine.SetTilt(
+                _renderPipeline.CameraEngine.Target.Pitch,
+                YawSlider.Value);
+
+            YawValueText.Text = $"{YawSlider.Value:0}°";
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -1053,15 +1114,18 @@ namespace VirtualCamStudio
         {
             if (_renderPipeline != null)
             {
-                _renderPipeline.ResetFraming();
+                _renderPipeline.CameraEngine.ResetCamera();
             }
 
+            // Update slider values to match reset camera state
             _suppressSliderEvents = true;
             try
             {
                 ZoomSlider.Value = 1;
                 XSlider.Value = 0;
                 YSlider.Value = 0;
+                PitchSlider.Value = 0;
+                YawSlider.Value = 0;
                 RotationSlider.Value = 0;
             }
             finally
@@ -1172,9 +1236,11 @@ namespace VirtualCamStudio
         // ============================================
 
         /// <summary>
-        /// Left-click drag = Pan
-        /// Left double-click = Auto Fit (reset zoom and offsets only, keep rotation)
-        /// Middle-click = Reset (same as Auto Fit)
+        /// Mouse interaction with virtual camera preview.
+        /// Left-click drag = Move camera position
+        /// Right-click drag = Tilt camera (pitch/yaw)
+        /// Middle-click drag = Fine camera movement
+        /// Left double-click = Center camera smoothly
         /// </summary>
         private void PreviewBorder_MouseDown(object sender, MouseButtonEventArgs e)
         {
@@ -1183,14 +1249,39 @@ namespace VirtualCamStudio
 
             if (e.LeftButton == MouseButtonState.Pressed)
             {
-                // Detect double-click
+                // Detect double-click = center camera
                 if (e.ClickCount == 2)
                 {
-                    AutoFitPreview();
+                    _renderPipeline?.CameraEngine.ResetCamera();
                     e.Handled = true;
                     return;
                 }
 
+                // Start camera position drag
+                if (!_isDragging)
+                {
+                    _isDragging = true;
+                    _lastMousePosition = e.GetPosition(PreviewBorder);
+                    PreviewBorder.CaptureMouse();
+                    PreviewBorder.Cursor = Cursors.SizeAll;
+                    e.Handled = true;
+                }
+            }
+            else if (e.RightButton == MouseButtonState.Pressed)
+            {
+                // Start camera tilt drag
+                if (!_isDragging)
+                {
+                    _isDragging = true;
+                    _lastMousePosition = e.GetPosition(PreviewBorder);
+                    PreviewBorder.CaptureMouse();
+                    PreviewBorder.Cursor = Cursors.Cross;
+                    e.Handled = true;
+                }
+            }
+            else if (e.MiddleButton == MouseButtonState.Pressed)
+            {
+                // Start fine movement drag
                 if (!_isDragging)
                 {
                     _isDragging = true;
@@ -1200,19 +1291,14 @@ namespace VirtualCamStudio
                     e.Handled = true;
                 }
             }
-            else if (e.MiddleButton == MouseButtonState.Pressed)
-            {
-                AutoFitPreview();
-                e.Handled = true;
-            }
         }
 
         /// <summary>
-        /// Release left-click drag
+        /// Release camera drag
         /// </summary>
         private void PreviewBorder_MouseUp(object sender, MouseButtonEventArgs e)
         {
-            if (_isDragging && e.LeftButton == MouseButtonState.Released)
+            if (_isDragging)
             {
                 _isDragging = false;
                 PreviewBorder.ReleaseMouseCapture();
@@ -1222,65 +1308,65 @@ namespace VirtualCamStudio
         }
 
         /// <summary>
-        /// Left-click drag = Pan with clamping to prevent empty space around media
+        /// Camera control via mouse drag.
+        /// Left drag = Move camera position
+        /// Right drag = Tilt camera (pitch/yaw)
+        /// Middle drag = Fine camera movement (half speed)
         /// </summary>
         private void PreviewBorder_MouseMove(object sender, MouseEventArgs e)
         {
-            if (!_isDragging || _mediaController == null || !_mediaController.HasMedia)
+            if (!_isDragging || _mediaController == null || !_mediaController.HasMedia || _renderPipeline == null)
                 return;
 
             WpfPoint currentPosition = e.GetPosition(PreviewBorder);
             Vector delta = currentPosition - _lastMousePosition;
 
-            // Apply pan offset based on mouse movement
-            double newX = XSlider.Value + delta.X;
-            double newY = YSlider.Value + delta.Y;
-
-            // Calculate dynamic pan limits based on current zoom and media size
-            var (minX, maxX, minY, maxY) = CalculatePanBounds();
-
-            // Clamp pan to calculated bounds
-            newX = System.Math.Max(minX, System.Math.Min(maxX, newX));
-            newY = System.Math.Max(minY, System.Math.Min(maxY, newY));
-
-            XSlider.Value = newX;
-            YSlider.Value = newY;
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                // Move camera position (inverted: drag right = camera moves right = document appears to move left)
+                _renderPipeline.CameraEngine.AdjustPosition(delta.X, delta.Y);
+            }
+            else if (e.RightButton == MouseButtonState.Pressed)
+            {
+                // Tilt camera (pitch/yaw)
+                double pitchDelta = -delta.Y * 0.05;  // Vertical mouse = pitch
+                double yawDelta = delta.X * 0.05;     // Horizontal mouse = yaw
+                _renderPipeline.CameraEngine.AdjustTilt(pitchDelta, yawDelta);
+            }
+            else if (e.MiddleButton == MouseButtonState.Pressed)
+            {
+                // Fine movement (half speed)
+                _renderPipeline.CameraEngine.AdjustPosition(delta.X * 0.5, delta.Y * 0.5);
+            }
 
             _lastMousePosition = currentPosition;
             e.Handled = true;
         }
 
         /// <summary>
-        /// Mouse wheel = Smooth zoom with consistent steps
+        /// Mouse wheel = Adjust camera distance (closer/farther from document)
         /// </summary>
         private void PreviewBorder_MouseWheel(object sender, MouseWheelEventArgs e)
         {
-            if (_mediaController == null || !_mediaController.HasMedia)
+            if (_mediaController == null || !_mediaController.HasMedia || _renderPipeline == null)
                 return;
 
-            // Smooth zoom step: +0.1 per wheel click (120 delta units)
-            double zoomStep = 0.1 * (e.Delta / 120.0);
-            double newZoom = ZoomSlider.Value + zoomStep;
-
-            // Clamp to zoom range
-            newZoom = System.Math.Max(ZoomSlider.Minimum, System.Math.Min(ZoomSlider.Maximum, newZoom));
-
-            ZoomSlider.Value = newZoom;
+            // Camera distance step: +/-0.1 per wheel click (120 delta units)
+            double distanceStep = -0.1 * (e.Delta / 120.0);  // Negative: wheel up = closer
+            _renderPipeline.CameraEngine.AdjustDistance(distanceStep);
 
             e.Handled = true;
         }
 
         /// <summary>
-        /// Auto Fit = Reset zoom and offsets only (rotation stays unchanged)
+        /// Auto Fit = Reset camera to centered position
         /// </summary>
         private void AutoFitPreview()
         {
-            if (_mediaController == null || !_mediaController.HasMedia)
+            if (_mediaController == null || !_mediaController.HasMedia || _renderPipeline == null)
                 return;
 
-            ZoomSlider.Value = 1.0;
-            XSlider.Value = 0;
-            YSlider.Value = 0;
+            _renderPipeline.CameraEngine.ResetCamera();
 
             // Rendering will happen automatically via RenderLoop
         }
@@ -1378,6 +1464,60 @@ namespace VirtualCamStudio
             SafeAreaOverlay.Visibility = ShowSafeAreaCheckBox.IsChecked == true
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Toggles handheld mode for the virtual camera.
+        /// </summary>
+        private void HandheldModeCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_renderPipeline == null)
+                return;
+
+            _renderPipeline.CameraEngine.SetHandheldMode(HandheldModeCheckBox.IsChecked == true);
+        }
+
+        /// <summary>
+        /// Handles phone profile selection changes.
+        /// Loads the selected profile into the virtual camera engine.
+        /// </summary>
+        private void PhoneProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (PhoneProfileComboBox.SelectedIndex < 0 || _renderPipeline == null)
+                return;
+
+            // Get all profiles
+            List<PhoneProfile> profiles = PhoneProfileFactory.GetAllProfiles();
+
+            if (PhoneProfileComboBox.SelectedIndex < profiles.Count)
+            {
+                PhoneProfile selectedProfile = profiles[PhoneProfileComboBox.SelectedIndex];
+                _renderPipeline.CameraEngine.LoadProfile(selectedProfile);
+
+                // Update status
+                StatusText.Text = $"Loaded camera profile: {selectedProfile.Name}";
+            }
+        }
+
+        /// <summary>
+        /// Toggles verification mode for precise document capture.
+        /// </summary>
+        private void VerificationModeCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_renderPipeline == null)
+                return;
+
+            _renderPipeline.CameraEngine.VerificationMode = VerificationModeCheckBox.IsChecked == true;
+
+            // Update status
+            if (VerificationModeCheckBox.IsChecked == true)
+            {
+                StatusText.Text = "Verification Mode: Enabled (slower, more precise)";
+            }
+            else
+            {
+                StatusText.Text = "Verification Mode: Disabled";
+            }
         }
 
         // ============================================

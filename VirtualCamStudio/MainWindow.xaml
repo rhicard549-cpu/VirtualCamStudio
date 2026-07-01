@@ -713,6 +713,44 @@
 
                 <StackPanel>
 
+                    <TextBlock Text="📱 Virtual Camera"
+                               Foreground="White"
+                               FontWeight="Bold"
+                               FontSize="16"
+                               Margin="0,0,0,10"/>
+
+                    <TextBlock Text="Phone Camera"
+                               Foreground="White"
+                               FontWeight="Bold"/>
+
+                    <TextBlock Text="Phone Profile"
+                               Foreground="#BBBBBB"
+                               FontSize="11"
+                               Margin="0,5,0,2"/>
+
+                    <ComboBox x:Name="PhoneProfileComboBox"
+                              Margin="0,0,0,10"
+                              SelectionChanged="PhoneProfileComboBox_SelectionChanged"/>
+
+                    <CheckBox x:Name="VerificationModeCheckBox"
+                              Content="☑ Verification Mode"
+                              Foreground="White"
+                              IsChecked="True"
+                              Margin="0,0,0,5"
+                              Checked="VerificationModeCheckBox_Changed"
+                              Unchecked="VerificationModeCheckBox_Changed"
+                              ToolTip="Optimized for document capture (slower, more precise)"/>
+
+                    <CheckBox x:Name="HandheldModeCheckBox"
+                              Content="☐ Handheld Mode"
+                              Foreground="White"
+                              Margin="0,0,0,15"
+                              Checked="HandheldModeCheckBox_Changed"
+                              Unchecked="HandheldModeCheckBox_Changed"
+                              ToolTip="Subtle breathing and motion simulation"/>
+
+                    <Separator Margin="0,5"/>
+
                     <TextBlock Text="Fit Mode"
                                Foreground="White"
                                FontWeight="Bold"/>
@@ -729,7 +767,7 @@
 
                     <Separator Margin="0,5"/>
 
-                    <TextBlock Text="Zoom"
+                    <TextBlock Text="Camera Distance"
                                Foreground="White"
                                FontWeight="SemiBold"/>
 
@@ -738,24 +776,51 @@
                                Foreground="#BBBBBB"
                                Margin="0,0,0,5"/>
 
-                    <Slider x:Name="ZoomSlider"
-                            Minimum="1"
-                            Maximum="5"
-                            Value="1"
-                            TickFrequency="0.01"
-                            SmallChange="0.01"
-                            LargeChange="0.10"
-                            ValueChanged="ZoomSlider_ValueChanged"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="Near" 
+                                   Foreground="#999999"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,5,0"/>
+
+                        <Slider x:Name="ZoomSlider"
+                                Grid.Column="1"
+                                Minimum="1"
+                                Maximum="5"
+                                Value="1"
+                                TickFrequency="0.01"
+                                SmallChange="0.01"
+                                LargeChange="0.10"
+                                ValueChanged="ZoomSlider_ValueChanged"/>
+
+                        <TextBlock Text="Far" 
+                                   Grid.Column="2"
+                                   Foreground="#999999"
+                                   VerticalAlignment="Center"
+                                   Margin="5,0,0,0"/>
+                    </Grid>
 
                     <Separator Margin="0,10"/>
 
-                    <TextBlock Text="Horizontal"
+                    <TextBlock Text="Camera Position"
                                Foreground="White"
-                               FontWeight="SemiBold"/>
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,5"/>
+
+                    <TextBlock Text="Left / Right"
+                               Foreground="#BBBBBB"
+                               FontSize="11"
+                               Margin="0,0,0,2"/>
 
                     <TextBlock x:Name="HorizontalValueText"
                                Text="0"
-                               Foreground="#BBBBBB"
+                               Foreground="#888888"
+                               FontSize="10"
                                Margin="0,0,0,5"/>
 
                     <Slider x:Name="XSlider"
@@ -764,15 +829,15 @@
                             Value="0"
                             ValueChanged="XSlider_ValueChanged"/>
 
-                    <Separator Margin="0,10"/>
-
-                    <TextBlock Text="Vertical"
-                               Foreground="White"
-                               FontWeight="SemiBold"/>
+                    <TextBlock Text="Forward / Back"
+                               Foreground="#BBBBBB"
+                               FontSize="11"
+                               Margin="0,10,0,2"/>
 
                     <TextBlock x:Name="VerticalValueText"
                                Text="0"
-                               Foreground="#BBBBBB"
+                               Foreground="#888888"
+                               FontSize="10"
                                Margin="0,0,0,5"/>
 
                     <Slider x:Name="YSlider"
@@ -783,7 +848,48 @@
 
                     <Separator Margin="0,10"/>
 
-                    <TextBlock Text="Rotation"
+                    <TextBlock Text="Camera Tilt"
+                               Foreground="White"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,5"/>
+
+                    <TextBlock Text="Pitch"
+                               Foreground="#BBBBBB"
+                               FontSize="11"
+                               Margin="0,0,0,2"/>
+
+                    <TextBlock x:Name="PitchValueText"
+                               Text="0°"
+                               Foreground="#888888"
+                               FontSize="10"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="PitchSlider"
+                            Minimum="-12"
+                            Maximum="12"
+                            Value="0"
+                            ValueChanged="PitchSlider_ValueChanged"/>
+
+                    <TextBlock Text="Yaw"
+                               Foreground="#BBBBBB"
+                               FontSize="11"
+                               Margin="0,10,0,2"/>
+
+                    <TextBlock x:Name="YawValueText"
+                               Text="0°"
+                               Foreground="#888888"
+                               FontSize="10"
+                               Margin="0,0,0,5"/>
+
+                    <Slider x:Name="YawSlider"
+                            Minimum="-12"
+                            Maximum="12"
+                            Value="0"
+                            ValueChanged="YawSlider_ValueChanged"/>
+
+                    <Separator Margin="0,10"/>
+
+                    <TextBlock Text="Camera Roll"
                                Foreground="White"
                                FontWeight="SemiBold"/>
 
@@ -793,8 +899,8 @@
                                Margin="0,0,0,5"/>
 
                     <Slider x:Name="RotationSlider"
-                            Minimum="-180"
-                            Maximum="180"
+                            Minimum="-15"
+                            Maximum="15"
                             Value="0"
                             ValueChanged="RotationSlider_ValueChanged"/>
 
@@ -827,7 +933,7 @@
                               Margin="0,0,0,15"/>
 
                     <Button x:Name="ResetButton"
-                            Content="↺ Reset Framing"
+                            Content="↺ Reset Camera"
                             Height="36"
                             Click="ResetButton_Click"/>
 

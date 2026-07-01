@@ -1,6 +1,7 @@
 using OpenCvSharp;
 using System;
 using System.Diagnostics;
+using VirtualCamStudio.Camera;
 using VirtualCamStudio.Core;
 using VirtualCamStudio.Media;
 using VirtualCamStudio.Models;
@@ -34,8 +35,10 @@ namespace VirtualCamStudio.Services
         private readonly Outputs.OutputManager? _newOutputManager;  // New Frame-based output system
 
         private FramingSettings _framingSettings = new();
+        private readonly VirtualCameraEngine _cameraEngine = new();  // Virtual camera controller
         private CameraProfile? _activeProfile;
         private bool _disposed;
+        private DateTime _lastUpdateTime = DateTime.Now;
 
         // ============================================
         // Properties
@@ -59,6 +62,11 @@ namespace VirtualCamStudio.Services
         /// Gets the framing settings (zoom, pan, rotation).
         /// </summary>
         public FramingSettings FramingSettings => _framingSettings;
+
+        /// <summary>
+        /// Gets the virtual camera engine for smartphone camera simulation.
+        /// </summary>
+        public VirtualCameraEngine CameraEngine => _cameraEngine;
 
         // ============================================
         // Constructor
@@ -179,6 +187,24 @@ namespace VirtualCamStudio.Services
 
             try
             {
+                // Update camera engine (smooth interpolation and handheld simulation)
+                DateTime now = DateTime.Now;
+                double deltaTime = (now - _lastUpdateTime).TotalSeconds;
+                _lastUpdateTime = now;
+                _cameraEngine.Update(deltaTime);
+
+                // Convert camera state to framing settings for ViewportEngine
+                _framingSettings = CameraToTransformAdapter.ToFramingSettings(_cameraEngine.Current);
+
+                // Check for invalid values in framing settings
+                if (double.IsNaN(_framingSettings.Zoom) || double.IsInfinity(_framingSettings.Zoom) ||
+                    double.IsNaN(_framingSettings.OffsetX) || double.IsInfinity(_framingSettings.OffsetX) ||
+                    double.IsNaN(_framingSettings.OffsetY) || double.IsInfinity(_framingSettings.OffsetY))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[RenderPipeline] ? Invalid framing settings detected! Zoom={_framingSettings.Zoom}, OffsetX={_framingSettings.OffsetX}, OffsetY={_framingSettings.OffsetY}");
+                    return;
+                }
+
                 // Only render if we have media loaded
                 if (!_mediaController.HasMedia)
                 {
@@ -218,6 +244,9 @@ namespace VirtualCamStudio.Services
             }
             catch (Exception ex)
             {
+                // Log the error to help diagnose frame transmission issues
+                System.Diagnostics.Debug.WriteLine($"[RenderPipeline] ? Frame rendering failed: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[RenderPipeline] Stack: {ex.StackTrace}");
             }
             finally
             {
