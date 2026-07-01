@@ -308,8 +308,33 @@ namespace VirtualCamStudio.Media
         }
 
         /// <summary>
-        /// Seeks to a specific frame number.
+        /// Seeks to a specific frame number (async version for UI).
         /// Playback continues from the new position if playing.
+        /// </summary>
+        /// <param name="frameNumber">The frame number to seek to</param>
+        public async Task<bool> SeekAsync(long frameNumber)
+        {
+            bool wasPlaying = _state == PlaybackState.Playing;
+
+            if (wasPlaying)
+            {
+                await PauseAsync();
+            }
+
+            bool success = _videoPlayer.Seek(frameNumber);
+
+            if (wasPlaying && success)
+            {
+                Play();
+            }
+
+            return success;
+        }
+
+        /// <summary>
+        /// Seeks to a specific frame number (synchronous version for internal use).
+        /// Playback continues from the new position if playing.
+        /// WARNING: Do not call from UI thread - use SeekAsync() instead.
         /// </summary>
         /// <param name="frameNumber">The frame number to seek to</param>
         public bool Seek(long frameNumber)

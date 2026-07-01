@@ -863,7 +863,7 @@ namespace VirtualCamStudio
             _isSeekingTimeline = true;
         }
 
-        private void VideoTimelineSlider_MouseUp(object sender, MouseButtonEventArgs e)
+        private async void VideoTimelineSlider_MouseUp(object sender, MouseButtonEventArgs e)
         {
             _isSeekingTimeline = false;
 
@@ -871,7 +871,7 @@ namespace VirtualCamStudio
             if (_playbackEngine != null && _playbackEngine.IsVideoLoaded)
             {
                 long targetFrame = (long)VideoTimelineSlider.Value;
-                _playbackEngine.Seek(targetFrame);
+                await _playbackEngine.SeekAsync(targetFrame);
                 UpdateVideoPositionDisplay();
             }
         }
@@ -947,7 +947,7 @@ namespace VirtualCamStudio
             }
         }
 
-        private void SeekRelativeFrames(int frameOffset)
+        private async void SeekRelativeFrames(int frameOffset)
         {
             if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
                 return;
@@ -955,7 +955,7 @@ namespace VirtualCamStudio
             long currentFrame = _playbackEngine.CurrentFrame;
             long targetFrame = Math.Max(0, Math.Min(currentFrame + frameOffset, _playbackEngine.FrameCount - 1));
 
-            _playbackEngine.Seek(targetFrame);
+            await _playbackEngine.SeekAsync(targetFrame);
             UpdateVideoTimelineSlider();
         }
 
