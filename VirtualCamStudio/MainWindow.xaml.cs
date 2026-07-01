@@ -687,12 +687,17 @@ namespace VirtualCamStudio
             UpdatePlaybackControlsState(true);
 
             // Setup video timeline slider
-            VideoTimelineSlider.Maximum = _playbackEngine.FrameCount - 1;
+            long frameCount = _playbackEngine.FrameCount;
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Video loaded: {frameCount} frames, FPS: {_videoPlayer.FPS}");
+
+            VideoTimelineSlider.Maximum = frameCount - 1;
             VideoTimelineSlider.Value = 0;
             VideoTimelineSlider.Visibility = Visibility.Visible;
             VideoTimelineLabel.Visibility = Visibility.Visible;
             VideoPositionText.Visibility = Visibility.Visible;
             UpdateVideoPositionDisplay();
+
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Timeline slider configured: Min=0, Max={VideoTimelineSlider.Maximum}, Value={VideoTimelineSlider.Value}");
         }
 
         private bool DisplayFirstFrame()
@@ -861,18 +866,40 @@ namespace VirtualCamStudio
         private void VideoTimelineSlider_MouseDown(object sender, MouseButtonEventArgs e)
         {
             _isSeekingTimeline = true;
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Timeline slider drag started");
         }
 
         private async void VideoTimelineSlider_MouseUp(object sender, MouseButtonEventArgs e)
         {
-            _isSeekingTimeline = false;
-
-            // Seek to the selected frame
-            if (_playbackEngine != null && _playbackEngine.IsVideoLoaded)
+            try
             {
-                long targetFrame = (long)VideoTimelineSlider.Value;
-                await _playbackEngine.SeekAsync(targetFrame);
-                UpdateVideoPositionDisplay();
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Timeline slider released at value {VideoTimelineSlider.Value}");
+
+                _isSeekingTimeline = false;
+
+                // Seek to the selected frame
+                if (_playbackEngine != null && _playbackEngine.IsVideoLoaded)
+                {
+                    long targetFrame = (long)VideoTimelineSlider.Value;
+                    System.Diagnostics.Debug.WriteLine($"[MainWindow] Timeline slider seeking to frame {targetFrame}");
+
+                    bool success = await _playbackEngine.SeekAsync(targetFrame);
+
+                    if (success)
+                    {
+                        UpdateVideoPositionDisplay();
+                        System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Seek successful");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Seek failed");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Timeline slider error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Stack: {ex.StackTrace}");
             }
         }
 
@@ -881,6 +908,7 @@ namespace VirtualCamStudio
             // Only update display during drag, actual seek happens on MouseUp
             if (_isSeekingTimeline)
             {
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Timeline slider value changed to {e.NewValue}");
                 UpdateVideoPositionDisplay();
             }
         }
@@ -910,53 +938,70 @@ namespace VirtualCamStudio
 
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
-            // Only handle arrow keys when video is loaded and no text box is focused
-            if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
-                return;
-
-            if (Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox)
-                return;
-
-            switch (e.Key)
+            try
             {
-                case Key.Left:
-                    // Previous frame
-                    SeekRelativeFrames(-1);
-                    e.Handled = true;
-                    break;
+                // Only handle arrow keys when video is loaded and no text box is focused
+                if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
+                    return;
 
-                case Key.Right:
-                    // Next frame
-                    SeekRelativeFrames(1);
-                    e.Handled = true;
-                    break;
+                if (Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox)
+                    return;
 
-                case Key.Space:
-                    // Play/Pause toggle
-                    if (_playbackEngine.State == Media.PlaybackState.Playing)
-                    {
-                        _ = _playbackEngine.PauseAsync();
-                    }
-                    else if (_playbackEngine.State == Media.PlaybackState.Paused || 
-                             _playbackEngine.State == Media.PlaybackState.Stopped)
-                    {
-                        _playbackEngine.Play();
-                    }
-                    e.Handled = true;
-                    break;
+                switch (e.Key)
+                {
+                    case Key.Left:
+                        // Previous frame
+                        _ = SeekRelativeFramesAsync(-1);
+                        e.Handled = true;
+                        break;
+
+                    case Key.Right:
+                        // Next frame
+                        _ = SeekRelativeFramesAsync(1);
+                        e.Handled = true;
+                        break;
+
+                    case Key.Space:
+                        // Play/Pause toggle
+                        if (_playbackEngine.State == Media.PlaybackState.Playing)
+                        {
+                            _ = _playbackEngine.PauseAsync();
+                        }
+                        else if (_playbackEngine.State == Media.PlaybackState.Paused || 
+                                 _playbackEngine.State == Media.PlaybackState.Stopped)
+                        {
+                            _playbackEngine.Play();
+                        }
+                        e.Handled = true;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Keyboard shortcut error: {ex.Message}");
             }
         }
 
-        private async void SeekRelativeFrames(int frameOffset)
+        private async Task SeekRelativeFramesAsync(int frameOffset)
         {
-            if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
-                return;
+            try
+            {
+                if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
+                    return;
 
-            long currentFrame = _playbackEngine.CurrentFrame;
-            long targetFrame = Math.Max(0, Math.Min(currentFrame + frameOffset, _playbackEngine.FrameCount - 1));
+                long currentFrame = _playbackEngine.CurrentFrame;
+                long targetFrame = Math.Max(0, Math.Min(currentFrame + frameOffset, _playbackEngine.FrameCount - 1));
 
-            await _playbackEngine.SeekAsync(targetFrame);
-            UpdateVideoTimelineSlider();
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Seeking from frame {currentFrame} to {targetFrame}");
+
+                await _playbackEngine.SeekAsync(targetFrame);
+                UpdateVideoTimelineSlider();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] ? Seek error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Stack: {ex.StackTrace}");
+            }
         }
 
         private void UpdateVideoTimelineSlider()

@@ -314,21 +314,36 @@ namespace VirtualCamStudio.Media
         /// <param name="frameNumber">The frame number to seek to</param>
         public async Task<bool> SeekAsync(long frameNumber)
         {
-            bool wasPlaying = _state == PlaybackState.Playing;
-
-            if (wasPlaying)
+            try
             {
-                await PauseAsync();
+                Debug.WriteLine($"[PlaybackEngine] SeekAsync to frame {frameNumber}, current state: {_state}");
+
+                bool wasPlaying = _state == PlaybackState.Playing;
+
+                if (wasPlaying)
+                {
+                    Debug.WriteLine($"[PlaybackEngine] Pausing before seek...");
+                    await PauseAsync();
+                }
+
+                Debug.WriteLine($"[PlaybackEngine] Executing VideoPlayer.Seek({frameNumber})...");
+                bool success = _videoPlayer.Seek(frameNumber);
+                Debug.WriteLine($"[PlaybackEngine] VideoPlayer.Seek returned: {success}");
+
+                if (wasPlaying && success)
+                {
+                    Debug.WriteLine($"[PlaybackEngine] Resuming playback after seek...");
+                    Play();
+                }
+
+                return success;
             }
-
-            bool success = _videoPlayer.Seek(frameNumber);
-
-            if (wasPlaying && success)
+            catch (Exception ex)
             {
-                Play();
+                Debug.WriteLine($"[PlaybackEngine] ✗ SeekAsync error: {ex.Message}");
+                Debug.WriteLine($"[PlaybackEngine] Stack: {ex.StackTrace}");
+                return false;
             }
-
-            return success;
         }
 
         /// <summary>
