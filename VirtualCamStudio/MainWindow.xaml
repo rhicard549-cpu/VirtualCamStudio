@@ -9,7 +9,8 @@
         DragOver="Window_DragOver"
         Drop="Window_Drop"
         Loaded="Window_Loaded"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        PreviewKeyDown="Window_PreviewKeyDown">
 
     <Grid>
 
@@ -300,6 +301,38 @@
                           IsEnabled="False"
                           Checked="LoopCheckBox_Changed"
                           Unchecked="LoopCheckBox_Changed"/>
+
+                <!-- Video Timeline Slider -->
+                <TextBlock x:Name="VideoTimelineLabel"
+                           Text="Timeline:"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           FontWeight="SemiBold"
+                           Margin="15,0,10,0"
+                           Visibility="Collapsed"/>
+
+                <Slider x:Name="VideoTimelineSlider"
+                        Width="200"
+                        Height="28"
+                        Minimum="0"
+                        Maximum="100"
+                        Value="0"
+                        VerticalAlignment="Center"
+                        Margin="0,0,10,0"
+                        Visibility="Collapsed"
+                        ValueChanged="VideoTimelineSlider_ValueChanged"
+                        PreviewMouseDown="VideoTimelineSlider_MouseDown"
+                        PreviewMouseUp="VideoTimelineSlider_MouseUp"
+                        ToolTip="Use Left/Right arrow keys for frame-by-frame control"/>
+
+                <TextBlock x:Name="VideoPositionText"
+                           Text="00:00 / 00:00"
+                           Foreground="#aaa"
+                           VerticalAlignment="Center"
+                           FontFamily="Consolas"
+                           FontSize="11"
+                           Margin="0,0,10,0"
+                           Visibility="Collapsed"/>
 
                 <!-- Audio Separator -->
                 <Border Width="1"

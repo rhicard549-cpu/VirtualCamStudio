@@ -31,6 +31,9 @@ namespace VirtualCamStudio
     /// - Arrow Up: Navigate to previous media item
     /// - Arrow Down: Navigate to next media item
     /// - Ctrl+A: Focus media library (select first item if none selected)
+    /// - Left Arrow: Previous video frame (when video is loaded)
+    /// - Right Arrow: Next video frame (when video is loaded)
+    /// - Space: Play/Pause video toggle (when video is loaded)
     /// </summary>
     public partial class MainWindow : System.Windows.Window
     {
@@ -627,8 +630,11 @@ namespace VirtualCamStudio
             // Update pan slider ranges for new media
             UpdatePanSliderRanges();
 
-            // Disable video playback controls
+            // Disable video playback controls and hide timeline
             UpdatePlaybackControlsState(false);
+            VideoTimelineSlider.Visibility = Visibility.Collapsed;
+            VideoTimelineLabel.Visibility = Visibility.Collapsed;
+            VideoPositionText.Visibility = Visibility.Collapsed;
         }
 
         private async Task LoadVideoAsync(string path)
@@ -679,6 +685,14 @@ namespace VirtualCamStudio
 
             // Enable video playback controls
             UpdatePlaybackControlsState(true);
+
+            // Setup video timeline slider
+            VideoTimelineSlider.Maximum = _playbackEngine.FrameCount - 1;
+            VideoTimelineSlider.Value = 0;
+            VideoTimelineSlider.Visibility = Visibility.Visible;
+            VideoTimelineLabel.Visibility = Visibility.Visible;
+            VideoPositionText.Visibility = Visibility.Visible;
+            UpdateVideoPositionDisplay();
         }
 
         private bool DisplayFirstFrame()
@@ -789,6 +803,9 @@ namespace VirtualCamStudio
                     // Update MediaController with the new video frame
                     // RenderLoop will pick it up automatically on the next render cycle
                     _mediaController.UpdateVideoFrame(frame.Image);
+
+                    // Update timeline slider (if not currently being dragged by user)
+                    UpdateVideoTimelineSlider();
                 }
                 catch (Exception ex)
                 {
@@ -832,6 +849,122 @@ namespace VirtualCamStudio
             if (_playbackEngine != null)
             {
                 _playbackEngine.Loop = LoopCheckBox.IsChecked == true;
+            }
+        }
+
+        // ============================================
+        // Video Timeline Control Handlers
+        // ============================================
+
+        private bool _isSeekingTimeline = false;  // Prevent playback updates while user drags slider
+
+        private void VideoTimelineSlider_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            _isSeekingTimeline = true;
+        }
+
+        private void VideoTimelineSlider_MouseUp(object sender, MouseButtonEventArgs e)
+        {
+            _isSeekingTimeline = false;
+
+            // Seek to the selected frame
+            if (_playbackEngine != null && _playbackEngine.IsVideoLoaded)
+            {
+                long targetFrame = (long)VideoTimelineSlider.Value;
+                _playbackEngine.Seek(targetFrame);
+                UpdateVideoPositionDisplay();
+            }
+        }
+
+        private void VideoTimelineSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            // Only update display during drag, actual seek happens on MouseUp
+            if (_isSeekingTimeline)
+            {
+                UpdateVideoPositionDisplay();
+            }
+        }
+
+        private void UpdateVideoPositionDisplay()
+        {
+            if (_playbackEngine != null && _playbackEngine.IsVideoLoaded)
+            {
+                long currentFrame = _isSeekingTimeline 
+                    ? (long)VideoTimelineSlider.Value 
+                    : _playbackEngine.CurrentFrame;
+                long totalFrames = _playbackEngine.FrameCount;
+                double fps = _videoPlayer.FPS;
+
+                if (fps > 0)
+                {
+                    TimeSpan currentTime = TimeSpan.FromSeconds(currentFrame / fps);
+                    TimeSpan totalTime = TimeSpan.FromSeconds(totalFrames / fps);
+                    VideoPositionText.Text = $"{currentTime:mm\\:ss} / {totalTime:mm\\:ss}";
+                }
+            }
+        }
+
+        // ============================================
+        // Keyboard Shortcuts
+        // ============================================
+
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            // Only handle arrow keys when video is loaded and no text box is focused
+            if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
+                return;
+
+            if (Keyboard.FocusedElement is TextBox || Keyboard.FocusedElement is ComboBox)
+                return;
+
+            switch (e.Key)
+            {
+                case Key.Left:
+                    // Previous frame
+                    SeekRelativeFrames(-1);
+                    e.Handled = true;
+                    break;
+
+                case Key.Right:
+                    // Next frame
+                    SeekRelativeFrames(1);
+                    e.Handled = true;
+                    break;
+
+                case Key.Space:
+                    // Play/Pause toggle
+                    if (_playbackEngine.State == Media.PlaybackState.Playing)
+                    {
+                        _ = _playbackEngine.PauseAsync();
+                    }
+                    else if (_playbackEngine.State == Media.PlaybackState.Paused || 
+                             _playbackEngine.State == Media.PlaybackState.Stopped)
+                    {
+                        _playbackEngine.Play();
+                    }
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void SeekRelativeFrames(int frameOffset)
+        {
+            if (_playbackEngine == null || !_playbackEngine.IsVideoLoaded)
+                return;
+
+            long currentFrame = _playbackEngine.CurrentFrame;
+            long targetFrame = Math.Max(0, Math.Min(currentFrame + frameOffset, _playbackEngine.FrameCount - 1));
+
+            _playbackEngine.Seek(targetFrame);
+            UpdateVideoTimelineSlider();
+        }
+
+        private void UpdateVideoTimelineSlider()
+        {
+            if (_playbackEngine != null && _playbackEngine.IsVideoLoaded && !_isSeekingTimeline)
+            {
+                VideoTimelineSlider.Value = _playbackEngine.CurrentFrame;
+                UpdateVideoPositionDisplay();
             }
         }
 
